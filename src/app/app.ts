@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import morganBody from 'morgan-body';
+import apiRoutes from '../routes';
 
 const app = express();
 
@@ -14,7 +15,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 morganBody(app, { immediateReqLog: true });
 
 // Routes
-// app.use('/api');
+app.use('/api', apiRoutes);
 
 // Sample route
 app.get('/', (req: Request, res: Response) => {
