@@ -96,12 +96,13 @@ export const loginUser = async (req: Request, res: Response) => {
 
   const existingTokenResult = await tokenRepository.findByUserId(user._id.toString());
   if (existingTokenResult.err) {
-    res.status(500).json(createErrorResponse(existingTokenResult.err.message || 'An error occurred while checking for existing token.', existingTokenResult.err));
-    return;
+    console.log(existingTokenResult.err.message);
   }
 
   if (existingTokenResult.value) {
     await tokenRepository.updateToken(existingTokenResult.value._id.toString(), { token: tokenResult.token, expiresAt: tokenResult.expiresAt });
+  } else {
+await tokenRepository.createToken({ userId: user._id as any, token: tokenResult.token, expiresAt: tokenResult.expiresAt });
   }
 
   res.status(200).json(createSuccessResponse({
@@ -117,7 +118,13 @@ export const registerUser = async (req: Request, res: Response) => {
     lastName: Joi.string().required(),
     profile: Joi.string().valid('business_owner', 'investor'),
     email: Joi.string().email().required(),
-    password: Joi.string().min(6).required(),
+    password: Joi.string().min(8)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
+      .required().messages({
+      'any.required': 'newPassword is required',
+      'string.min': 'newPassword must be at least 8 characters long',
+      'string.pattern.base': 'newPassword must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+    }),
     // confirm_password: Joi.string().valid(Joi.ref('password')).required(),
   }));
 
@@ -131,8 +138,7 @@ export const registerUser = async (req: Request, res: Response) => {
   // Confirm if email already exists in the database
   const existingUserResult = await usersRepository.findUserByEmail(email);
   if (existingUserResult.err) {
-    res.status(500).json(createErrorResponse(existingUserResult.err.message || 'An error occurred while checking for existing user.', existingUserResult.err));
-    return;
+    console.log(existingUserResult.err.message);
   }
 
   if (existingUserResult.value) {
@@ -168,9 +174,19 @@ export const registerUser = async (req: Request, res: Response) => {
     otp: otpResult.otp,
     expiresAt: otpResult.expiresAt,
   };
-  const saveOtpResult = await otpRepository.saveOtp(otpRecord);
-  if (saveOtpResult.err) {
-    res.status(500).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
+  // Check if there's an existing OTP for email verification and update it, otherwise create a new one
+  const existingOtpResult = await otpRepository.findOtpByEmail(email);
+  if (existingOtpResult.err) {
+    res.status(500).json(createErrorResponse(existingOtpResult.err.message || 'An error occurred while retrieving OTP.', existingOtpResult.err));
+    return;
+  }
+
+  const saveResult = existingOtpResult.value
+    ? await otpRepository.updateOtp(email, otpRecord)
+    : await otpRepository.saveOtp(otpRecord);
+
+  if (saveResult.err) {
+    res.status(500).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
     return;
   }
 
@@ -294,3 +310,129 @@ export const verifyOtp = async (req: Request, res: Response) => {
   }, 'Email verified successfully.'));
 
 };
+
+// Forgot password and reset password
+export const forgotPassword = async (req: Request, res: Response) => { 
+  const validation = ValidationHelper.validateObject(req.body, Joi.object({
+    email: Joi.string().email().required(),
+  }));
+
+  if (validation.err) {
+    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    return;
+  }
+
+  const { email } = req.body;
+
+  // Check if user exists
+  const userResult = await usersRepository.findUserByEmail(email);
+  if (userResult.err) {
+    res.status(500).json(createErrorResponse(userResult.err.message || 'An error occurred while retrieving user.', userResult.err));
+    return;
+  }
+
+  const user = userResult.value;
+  if (!user) {
+    res.status(404).json(createErrorResponse('User not found.'));
+    return;
+  }
+
+  // Generate OTP and send password reset email
+  const generateOtpResult = await otpService.generateOtp(email);
+  if (generateOtpResult.err) {
+    res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+    return;
+  }
+  const otpResult = generateOtpResult.value!;
+
+  // Save OTP to database
+  // Check if there's an existing OTP for password reset and update it, otherwise create a new one
+  const existingOtpResult = await otpRepository.findOtpByEmail(email);
+  if (existingOtpResult.err) {
+    res.status(500).json(createErrorResponse(existingOtpResult.err.message || 'An error occurred while retrieving OTP.', existingOtpResult.err));
+    return;
+  }
+
+  const otpRecord = {
+    email: email,
+    otp: otpResult.otp,
+    expiresAt: otpResult.expiresAt,
+  };
+
+  const saveResult = existingOtpResult.value
+    ? await otpRepository.updateOtp(email, otpRecord)
+    : await otpRepository.saveOtp(otpRecord);
+
+  if (saveResult.err) {
+    res.status(500).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
+    return;
+  }
+
+  // Send password reset email here (Email service integration needed)
+
+  res.status(200).json(createSuccessResponse({
+    email: user.email,
+    otp: otpResult.otp,
+    expiresAt: otpResult.expiresAt
+  }, 'Password reset OTP sent successfully.'));
+}
+
+export const resetPassword = async (req: Request, res: Response) => {
+  const validation = ValidationHelper.validateObject(req.body, Joi.object({
+    email: Joi.string().email().required(),
+    otp: Joi.string().length(6).required(),
+    newPassword: Joi.string().min(8)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
+      .required().messages({
+      'any.required': 'newPassword is required',
+      'string.min': 'newPassword must be at least 8 characters long',
+      'string.pattern.base': 'newPassword must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+    }),
+  }));
+
+  if (validation.err) {
+    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    return;
+  }
+
+  const { email, otp, newPassword } = req.body;
+
+  const otpRecordResult = await otpRepository.findOtpByEmail(email);
+  if (otpRecordResult.err) {
+    res.status(500).json(createErrorResponse(otpRecordResult.err.message || 'An error occurred while retrieving OTP.', otpRecordResult.err));
+    return;
+  }
+
+  const otpRecord = otpRecordResult.value;
+  if (!otpRecord || otpRecord.otp !== otp) {
+    res.status(400).json(createErrorResponse('Invalid OTP.'));
+    return;
+  }
+
+  if (otpRecord.expiresAt < new Date()) {
+    res.status(400).json(createErrorResponse('OTP has expired.'));
+    return;
+  }
+
+  // Update user password
+  const userResult = await usersRepository.findUserByEmail(email);
+  if (userResult.err || !userResult.value) {
+    res.status(500).json(createErrorResponse('An error occurred while resetting password.', userResult.err));
+    return;
+  }
+
+  const user = userResult.value;
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  const updateUserResult = await usersRepository.updateUser(email, { password: hashedPassword });
+  if (updateUserResult.err) {
+    res.status(500).json(createErrorResponse(updateUserResult.err.message || 'An error occurred while updating password.', updateUserResult.err));
+    return;
+  }
+
+  // Delete OTP after successful password reset
+  await otpRepository.deleteOtp(email);
+
+  res.status(200).json(createSuccessResponse({
+    email: user.email,
+  }, 'Password reset successfully.'));
+}
