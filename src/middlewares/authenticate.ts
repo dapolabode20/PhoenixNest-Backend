@@ -1,8 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
 import { tokenRepository } from '../repositories/token.repository';
 import config from '../config/config';
 import { createErrorResponse } from '../helpers/response.utils';
+
+export const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images and PDF files are allowed'));
+    }
+  },
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
