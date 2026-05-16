@@ -17,12 +17,18 @@ interface Proof {
 
 export interface IStartUpProfile extends Document {
   userId: Schema.Types.ObjectId;
+  fullName?: string;
   firstName?: string;
   lastName?: string;
   middleName?: string;
+  professionalEmail: string;
   companyName: string;
-  location: string;
-  shortBio: string;
+  registrationNumber: string;
+  identificationNumber: string;
+  identificationDocumentUrl: string;
+  identificationType?: string;
+  location?: string;
+  shortBio?: string;
   industry?: string;
   biography?: string;
   areaOfExperience?: string;
@@ -41,12 +47,18 @@ export interface IStartUpProfile extends Document {
 const StartUpProfileSchema = new Schema<IStartUpProfile>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    fullName: { type: String },
     firstName: { type: String },
     lastName: { type: String },
     middleName: { type: String },
+    professionalEmail: { type: String, required: true },
     companyName: { type: String, required: true },
-    location: { type: String, required: true },
-    shortBio: { type: String, required: true },
+    registrationNumber: { type: String, required: true },
+    identificationNumber: { type: String, required: true },
+    identificationDocumentUrl: { type: String, required: true },
+    identificationType: { type: String },
+    location: { type: String },
+    shortBio: { type: String },
     industry: { type: String },
     biography: { type: String },
     areaOfExperience: { type: String },
