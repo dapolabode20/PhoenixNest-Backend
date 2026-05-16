@@ -9,6 +9,7 @@ import { tokenRepository } from '../repositories/token.repository';
 import { startUpProfileRepository } from '../repositories/startUpProfile.repository';
 import { investorProfileRepository } from '../repositories/investorProfile.repository';
 import { otpService } from '../services/otp.service';
+import { fileUploadService } from '../services/fileUpload.service';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
 
 export const loginUser = async (req: Request, res: Response) => {
@@ -135,7 +136,6 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
       companyName: Joi.string().required(),
       registrationNumber: Joi.string().required(),
       identificationNumber: Joi.string().required(),
-      identificationDocumentUrl: Joi.string().uri().required(),
       identificationType: Joi.string().optional(),
       location: Joi.string().optional(),
       shortBio: Joi.string().optional(),
@@ -160,6 +160,17 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     return;
   }
 
+  if (!req.file) {
+    res.status(400).json(createErrorResponse('Identification document is required.'));
+    return;
+  }
+
+  const uploadResult = await fileUploadService.upload(req.file.buffer, req.file.mimetype);
+  if (uploadResult.err) {
+    res.status(500).json(createErrorResponse(uploadResult.err.message || 'Failed to upload identification document.', uploadResult.err));
+    return;
+  }
+
   const newUserResult = await usersRepository.createUser({
     firstName: req.body.firstName,
     lastName: req.body.lastName,
@@ -181,7 +192,7 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     companyName: req.body.companyName,
     registrationNumber: req.body.registrationNumber,
     identificationNumber: req.body.identificationNumber,
-    identificationDocumentUrl: req.body.identificationDocumentUrl,
+    identificationDocumentUrl: uploadResult.value!,
     identificationType: req.body.identificationType,
     location: req.body.location,
     shortBio: req.body.shortBio,
@@ -247,7 +258,6 @@ export const registerInvestor = async (req: Request, res: Response) => {
       firmName: Joi.string().required(),
       entityId: Joi.string().required(),
       identificationNumber: Joi.string().required(),
-      identificationDocumentUrl: Joi.string().uri().required(),
       lookingOutFor: Joi.string().optional(),
       stagePreference: Joi.string().optional(),
       yearsOfInvestmentExperience: Joi.string().optional(),
@@ -273,6 +283,17 @@ export const registerInvestor = async (req: Request, res: Response) => {
     return;
   }
 
+  if (!req.file) {
+    res.status(400).json(createErrorResponse('Identification document is required.'));
+    return;
+  }
+
+  const uploadResult = await fileUploadService.upload(req.file.buffer, req.file.mimetype);
+  if (uploadResult.err) {
+    res.status(500).json(createErrorResponse(uploadResult.err.message || 'Failed to upload identification document.', uploadResult.err));
+    return;
+  }
+
   const newUserResult = await usersRepository.createUser({
     firstName: req.body.firstName,
     lastName: req.body.lastName,
@@ -294,7 +315,7 @@ export const registerInvestor = async (req: Request, res: Response) => {
     firmName: req.body.firmName,
     entityId: req.body.entityId,
     identificationNumber: req.body.identificationNumber,
-    identificationDocumentUrl: req.body.identificationDocumentUrl,
+    identificationDocumentUrl: uploadResult.value!,
     lookingOutFor: req.body.lookingOutFor,
     stagePreference: req.body.stagePreference,
     yearsOfInvestmentExperience: req.body.yearsOfInvestmentExperience,
