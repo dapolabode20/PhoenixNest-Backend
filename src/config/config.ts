@@ -5,6 +5,9 @@ export interface AppConfig {
   port: number;
   dbUrl: string;
   accessTokenSecret: string;
+  cloudinaryCloudName: string;
+  cloudinaryApiKey: string;
+  cloudinaryApiSecret: string;
 }
 
 // Load environment variables
@@ -22,7 +25,10 @@ const config: AppConfig = {
   environment: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT) || 3001,
   dbUrl: getEnvVariable('DB_URL'),
-  accessTokenSecret: getEnvVariable('ACCESS_TOKEN_SECRET')
+  accessTokenSecret: getEnvVariable('ACCESS_TOKEN_SECRET'),
+  cloudinaryCloudName: getEnvVariable('CLOUDINARY_CLOUD_NAME'),
+  cloudinaryApiKey: getEnvVariable('CLOUDINARY_API_KEY'),
+  cloudinaryApiSecret: getEnvVariable('CLOUDINARY_API_SECRET')
 };
 
 // const _loggable: any = { ...config };
