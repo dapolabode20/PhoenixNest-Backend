@@ -28,12 +28,7 @@ app.get('/', (req: Request, res: Response) => {
   res.status(200).json({
     name: 'Phoenix Nest Backend',
     status: 'Running',
-    description: 'Backend API for Phoenix Nest Application',
-    endpoints: {
-      users: '/api/users',
-      auth: '/api/auth',
-      products: '/api/products'
-    }
+    description: 'Backend API for Phoenix Nest Application'
   })
 });
 

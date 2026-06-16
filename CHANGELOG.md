@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-06-16
+---
+### Added
+- Added discovery feature endpoints and controller flow for investor startup feed and match scoring.
+- Added profile endpoints and controller flow for fetching and updating startup/investor profiles.
+- Added shared upload middleware usage for auth and profile file uploads.
+- Added Joi-based request validation coverage for discovery and profile request fields.
+
+### Changed
+- Updated signup logic for business owner and investor to:
+	- hash passwords before persisting users.
+	- use a single email lookup flow and branch by verified vs unverified account state.
+	- regenerate OTP for existing unverified users instead of hard-failing as duplicate.
+- Updated OTP persistence from in-memory storage to MongoDB-backed repository behavior.
+- Updated signup OTP save flow to write directly with saveOtp (upsert) instead of pre-checking for existing OTP records.
+- Updated profile routes to enforce authentication middleware globally.
+- Updated auth upload route imports to use the shared upload middleware module.
+- Updated authenticate middleware to return a controlled 401 response for invalid/expired JWT verification errors.
+
+### Fixed
+- Fixed crash caused by `req.auth` being undefined on profile update endpoints by applying auth middleware to profile routes.
+- Fixed signup/investor OTP not being persisted reliably by switching OTP repository logic to MongoDB operations.
+- Fixed duplicate upload middleware definitions by centralizing upload behavior in the upload middleware module.
+- Fixed inconsistent OTP file validation behavior by allowing image/PDF uploads via the shared middleware.
+
+
+------
 ## [1.1.1] - 2026-02-01
 ---
 ### Added

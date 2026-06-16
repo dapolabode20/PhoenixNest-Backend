@@ -5,6 +5,7 @@ import { Result } from '../helpers/result.helpers';
 interface IStartUpProfileRepository {
   createProfile(data: Partial<IStartUpProfile>): Promise<Result<IStartUpProfile>>;
   findByUserId(userId: string): Promise<Result<IStartUpProfile | null>>;
+  findByUserIdWithUser(userId: string): Promise<Result<IStartUpProfile | null>>;
   findById(id: string): Promise<Result<IStartUpProfile | null>>;
   findAll(): Promise<Result<IStartUpProfile[]>>;
   updateByUserId(userId: string, data: Partial<IStartUpProfile>): Promise<Result<IStartUpProfile | null>>;
@@ -32,6 +33,18 @@ export class StartUpProfileRepository implements IStartUpProfileRepository {
       return Result.value(profile);
     } catch (error) {
       return Result.error(new Error('Failed to find startup profile by userId'));
+    }
+  }
+
+  async findByUserIdWithUser(userId: string): Promise<Result<IStartUpProfile | null>> {
+    try {
+      const profile = await this.model
+        .findOne({ userId } as any)
+        .populate('userId', 'firstName lastName middleName email profile')
+        .exec();
+      return Result.value(profile);
+    } catch (error) {
+      return Result.error(new Error('Failed to find startup profile by userId with user populated'));
     }
   }
 

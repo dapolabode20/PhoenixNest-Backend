@@ -1,21 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import multer from 'multer';
 import { tokenRepository } from '../repositories/token.repository';
 import config from '../config/config';
 import { createErrorResponse } from '../helpers/response.utils';
-
-export const upload = multer({
-  storage: multer.memoryStorage(),
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Only images and PDF files are allowed'));
-    }
-  },
-  limits: { fileSize: 5 * 1024 * 1024 }
-});
 
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
@@ -26,7 +13,13 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     return;
   }
 
-  const decodedToken = jwt.verify(token, config.accessTokenSecret);
+  let decodedToken;
+  try {
+    decodedToken = jwt.verify(token, config.accessTokenSecret);
+  } catch {
+    res.status(401).json(createErrorResponse('Invalid or expired access token'));
+    return;
+  }
   if (!decodedToken || typeof decodedToken === 'string') {
     res.status(401).json(createErrorResponse('Invalid access token'));
     return;
