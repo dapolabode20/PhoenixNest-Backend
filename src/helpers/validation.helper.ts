@@ -2,7 +2,7 @@ import Joi from 'joi';
 import { Result } from '../helpers/result.helpers';
 
 export class ValidationHelper {
-  static validateObject(data: any, schema: Joi.Schema): Result<boolean> {
+  static validateObject<T>(data: unknown, schema: Joi.Schema<T>): Result<T> {
     const { error, value } = schema.validate(data, { abortEarly: false });
     if (error) {
       const message = error.details.map((detail: any) => detail.message.replace(/\\/g, '')).join('; ');
@@ -10,6 +10,6 @@ export class ValidationHelper {
     } else if (!value) {
       return { err: new Error('invalid data') };
     }
-    return { value: true };
+    return { value };
   }
 }

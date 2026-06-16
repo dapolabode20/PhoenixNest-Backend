@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { loginUser, registerBusinessOwner, registerInvestor, resendOtp, verifyOtp, forgotPassword, resetPassword } from '../controllers/auth.controllers';
-import { upload } from '../middlewares/authenticate';
+import { upload } from '../middlewares/upload';
 
 const router = Router();
 
