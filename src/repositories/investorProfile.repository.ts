@@ -5,6 +5,7 @@ import { Result } from '../helpers/result.helpers';
 interface IInvestorProfileRepository {
   createProfile(data: Partial<IInvestorProfile>): Promise<Result<IInvestorProfile>>;
   findByUserId(userId: string): Promise<Result<IInvestorProfile | null>>;
+  findByUserIdWithUser(userId: string): Promise<Result<IInvestorProfile | null>>;
   findById(id: string): Promise<Result<IInvestorProfile | null>>;
   findAll(): Promise<Result<IInvestorProfile[]>>;
   updateByUserId(userId: string, data: Partial<IInvestorProfile>): Promise<Result<IInvestorProfile | null>>;
@@ -32,6 +33,18 @@ export class InvestorProfileRepository implements IInvestorProfileRepository {
       return Result.value(profile);
     } catch (error) {
       return Result.error(new Error('Failed to find investor profile by userId'));
+    }
+  }
+
+  async findByUserIdWithUser(userId: string): Promise<Result<IInvestorProfile | null>> {
+    try {
+      const profile = await this.model
+        .findOne({ userId } as any)
+        .populate('userId', 'firstName lastName middleName email profile')
+        .exec();
+      return Result.value(profile);
+    } catch (error) {
+      return Result.error(new Error('Failed to find investor profile by userId with user populated'));
     }
   }
 

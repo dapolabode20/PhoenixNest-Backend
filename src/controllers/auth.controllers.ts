@@ -148,7 +148,7 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email } = req.body;
+  const { email, password } = validation.value;
 
   const existingUserResult = await usersRepository.findUserByEmail(email);
   if (existingUserResult.err) {
@@ -156,7 +156,35 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
   }
 
   if (existingUserResult.value) {
-    res.status(409).json(createErrorResponse('Email already in use.'));
+    if (existingUserResult.value.isVerified) {
+      res.status(409).json(createErrorResponse('Email already in use.'));
+      return;
+    }
+
+    const generateOtpResult = await otpService.generateOtp(email);
+    if (generateOtpResult.err) {
+      res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+      return;
+    }
+
+    const otpResult = generateOtpResult.value!;
+    const otpRecord = { email, otp: otpResult.otp, expiresAt: otpResult.expiresAt };
+    const saveOtpResult = await otpRepository.saveOtp(otpRecord);
+    if (saveOtpResult.err) {
+      res.status(500).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
+      return;
+    }
+
+    res.status(200).json(
+      createSuccessResponse(
+        {
+          email,
+          otp: otpResult.otp,
+          expiresAt: otpResult.expiresAt
+        },
+        'Account exists but is not verified. A new OTP has been generated.'
+      )
+    );
     return;
   }
 
@@ -171,13 +199,15 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     return;
   }
 
+  const hashedPassword = await bcrypt.hash(password, 10);
+
   const newUserResult = await usersRepository.createUser({
     firstName: req.body.firstName,
     lastName: req.body.lastName,
     middleName: req.body.middleName,
     profile: 'business_owner',
     email,
-    password: req.body.password
+    password: hashedPassword
   });
   if (newUserResult.err) {
     res.status(500).json(createErrorResponse(newUserResult.err.message || 'An error occurred while creating the user.', newUserResult.err));
@@ -211,13 +241,7 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
   const otpResult = generateOtpResult.value!;
 
   const otpRecord = { email, otp: otpResult.otp, expiresAt: otpResult.expiresAt };
-  const existingOtpResult = await otpRepository.findOtpByEmail(email);
-  if (existingOtpResult.err) {
-    res.status(500).json(createErrorResponse(existingOtpResult.err.message || 'An error occurred while retrieving OTP.', existingOtpResult.err));
-    return;
-  }
-
-  const saveResult = existingOtpResult.value ? await otpRepository.updateOtp(email, otpRecord) : await otpRepository.saveOtp(otpRecord);
+  const saveResult = await otpRepository.saveOtp(otpRecord);
 
   if (saveResult.err) {
     res.status(500).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
@@ -271,7 +295,7 @@ export const registerInvestor = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email } = req.body;
+  const { email, password } = validation.value;
 
   const existingUserResult = await usersRepository.findUserByEmail(email);
   if (existingUserResult.err) {
@@ -279,7 +303,35 @@ export const registerInvestor = async (req: Request, res: Response) => {
   }
 
   if (existingUserResult.value) {
-    res.status(409).json(createErrorResponse('Email already in use.'));
+    if (existingUserResult.value.isVerified) {
+      res.status(409).json(createErrorResponse('Email already in use.'));
+      return;
+    }
+
+    const generateOtpResult = await otpService.generateOtp(email);
+    if (generateOtpResult.err) {
+      res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+      return;
+    }
+
+    const otpResult = generateOtpResult.value!;
+    const otpRecord = { email, otp: otpResult.otp, expiresAt: otpResult.expiresAt };
+    const saveOtpResult = await otpRepository.saveOtp(otpRecord);
+    if (saveOtpResult.err) {
+      res.status(500).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
+      return;
+    }
+
+    res.status(200).json(
+      createSuccessResponse(
+        {
+          email,
+          otp: otpResult.otp,
+          expiresAt: otpResult.expiresAt
+        },
+        'Account exists but is not verified. A new OTP has been generated.'
+      )
+    );
     return;
   }
 
@@ -294,13 +346,15 @@ export const registerInvestor = async (req: Request, res: Response) => {
     return;
   }
 
+  const hashedPassword = await bcrypt.hash(password, 10);
+
   const newUserResult = await usersRepository.createUser({
     firstName: req.body.firstName,
     lastName: req.body.lastName,
     middleName: req.body.middleName,
     profile: 'investor',
     email,
-    password: req.body.password
+    password: hashedPassword
   });
   if (newUserResult.err) {
     res.status(500).json(createErrorResponse(newUserResult.err.message || 'An error occurred while creating the user.', newUserResult.err));
@@ -335,13 +389,7 @@ export const registerInvestor = async (req: Request, res: Response) => {
   const otpResult = generateOtpResult.value!;
 
   const otpRecord = { email, otp: otpResult.otp, expiresAt: otpResult.expiresAt };
-  const existingOtpResult = await otpRepository.findOtpByEmail(email);
-  if (existingOtpResult.err) {
-    res.status(500).json(createErrorResponse(existingOtpResult.err.message || 'An error occurred while retrieving OTP.', existingOtpResult.err));
-    return;
-  }
-
-  const saveResult = existingOtpResult.value ? await otpRepository.updateOtp(email, otpRecord) : await otpRepository.saveOtp(otpRecord);
+  const saveResult = await otpRepository.saveOtp(otpRecord);
 
   if (saveResult.err) {
     res.status(500).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
