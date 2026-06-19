@@ -88,16 +88,21 @@ function scoreSectorAlignment(investor: IInvestorProfile, startup: IStartUpProfi
 // ---------------------------------------------------------------------------
 function scoreScalabilityRisk(startup: IStartUpProfile): number {
   let score = 0;
+  const totalPossibleScore = 120;
 
   if (startup.marketSize) score += 20; // knows their market
   if (startup.totalAddressableMarket) score += 20; // knows their TAM
   if (startup.traction) score += 20; // has traction data
   if (startup.pitchDeckCoverAndTagline) score += 15; // has a pitch deck
   if (startup.visionAndMission) score += 10; // has a clear vision
-  if (startup.proof?.cac) score += 10; // registered company
-  if (startup.proof?.financialStatements) score += 5; // has financials
+  if (startup.proof?.cac) score += 5; // CAC registration doc uploaded
+  if (startup.proof?.pitchDeck) score += 10; // pitch deck uploaded
+  if (startup.proof?.businessPlan) score += 5; // business plan uploaded
+  if (startup.proof?.financialModel) score += 5; // financial model uploaded
+  if (startup.pitchVideoUrl) score += 10; // pitch video uploaded
 
-  return Math.min(100, score);
+  // Normalise to 0-100 so added signals do not silently distort scoring.
+  return Math.round((score / totalPossibleScore) * 100);
 }
 
 // ---------------------------------------------------------------------------

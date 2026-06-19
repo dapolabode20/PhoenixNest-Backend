@@ -26,7 +26,9 @@ router.get('/user', authenticate, getMyProfile);
  */
 router.patch('/startup', authenticate, upload.fields([
   { name: 'cacFile', maxCount: 1 },
-  { name: 'financialFile', maxCount: 1 },
+  { name: 'pitchDeckFile', maxCount: 1 },
+  { name: 'businessPlanFile', maxCount: 1 },
+  { name: 'financialModelFile', maxCount: 1 },
 ]), updateStartupProfile);
 
 /**
