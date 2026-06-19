@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2026-06-19
+---
+### Added
+- Added `currency` support to startup profile updates and discovery responses.
+- Added `pitchVideoUrl` as a startup profile field and scalability signal.
+- Added support for richer proof uploads on startup profile update: `pitchDeckFile`, `businessPlanFile`, and `financialModelFile`.
+- Added `coreLeadership` update support (including JSON-string parsing for multipart/form-data payloads).
+
+### Changed
+- Changed startup `marketSize` and `totalAddressableMarket` types from string to number in model/schema and profile validation.
+- Changed scalability risk scoring to a normalized 0-100 calculation based on total possible points (instead of hard capping with `Math.min`).
+- Changed proof scoring keys to align with model fields: `cac`, `pitchDeck`, `businessPlan`, and `financialModel`.
+- Changed discovery feed and startup match payloads to include monetary context fields (`marketSize`, `totalAddressableMarket`, and `currency`).
+- Changed startup profile route upload field mapping to match expanded proof document support.
+
+### Fixed
+- Fixed startup profile proof mapping mismatch by replacing legacy financial statement handling with `financialModel`.
+- Fixed startup update error transparency by returning repository error details in controller responses.
+
+------
 ## [1.1.2] - 2026-06-16
 ---
 ### Added
