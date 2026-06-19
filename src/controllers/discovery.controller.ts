@@ -107,10 +107,12 @@ export const getDiscoveryFeed = async (req: Request, res: Response) => {
       shortBio: startup.shortBio ?? null,
       traction: startup.traction ?? null,
       marketSize: startup.marketSize ?? null,
+      totalAddressableMarket: startup.totalAddressableMarket ?? null,
+      currency: startup.currency ?? null,
       pitchDeckCoverAndTagline: startup.pitchDeckCoverAndTagline ?? null,
       matchScore: result.score,
       tier: result.tier,
-      breakdown: result.breakdown,
+      breakdown: result.breakdown
     };
   });
 
@@ -175,18 +177,23 @@ export const getStartupMatchScore = async (req: Request, res: Response) => {
 
   const matchResult = computeMatchScore(investorResult.value, startupResult.value);
 
-  res.status(200).json(createSuccessResponse(
-    {
-      startupId,
-      companyName: startupResult.value.companyName,
-      matchScore: matchResult.score,
-      tier: matchResult.tier,
-      breakdown: {
-        sectorAlignment: matchResult.breakdown.sectorAlignment,
-        scalabilityRisk: matchResult.breakdown.scalabilityRisk,
-        tractionSignal:  matchResult.breakdown.tractionSignal,
+  res.status(200).json(
+    createSuccessResponse(
+      {
+        startupId,
+        companyName: startupResult.value.companyName,
+        marketSize: startupResult.value.marketSize ?? null,
+        totalAddressableMarket: startupResult.value.totalAddressableMarket ?? null,
+        currency: startupResult.value.currency ?? null,
+        matchScore: matchResult.score,
+        tier: matchResult.tier,
+        breakdown: {
+          sectorAlignment: matchResult.breakdown.sectorAlignment,
+          scalabilityRisk: matchResult.breakdown.scalabilityRisk,
+          tractionSignal: matchResult.breakdown.tractionSignal
+        }
       },
-    },
-    'Match score computed successfully.',
-  ));
+      'Match score computed successfully.'
+    )
+  );
 };

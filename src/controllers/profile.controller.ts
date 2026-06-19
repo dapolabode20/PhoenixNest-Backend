@@ -7,56 +7,6 @@ import { usersRepository } from '../repositories/users.repository';
 import { fileUploadService } from '../services/fileUpload.service';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
 
-type UpdateStartupProfileBody = {
-  location?: string;
-  shortBio?: string;
-  industry?: string;
-  biography?: string;
-  areaOfExperience?: string;
-  traction?: string;
-  marketSize?: string;
-  totalAddressableMarket?: string;
-  pitchDeckCoverAndTagline?: string;
-  visionAndMission?: string;
-  personalWebsite?: string;
-  phoneNumber?: string;
-  cacUrl?: string;
-  financialStatementsUrl?: string;
-};
-
-type UpdateInvestorProfileBody = {
-  lookingOutFor?: string;
-  stagePreference?: string;
-  investorType?: string;
-  yearsOfInvestmentExperience?: string;
-  communicationPreference?: string;
-};
-
-const updateStartupProfileSchema = Joi.object<UpdateStartupProfileBody>({
-  location: Joi.string().optional(),
-  shortBio: Joi.string().optional(),
-  industry: Joi.string().optional(),
-  biography: Joi.string().optional(),
-  areaOfExperience: Joi.string().optional(),
-  traction: Joi.string().optional(),
-  marketSize: Joi.string().optional(),
-  totalAddressableMarket: Joi.string().optional(),
-  pitchDeckCoverAndTagline: Joi.string().optional(),
-  visionAndMission: Joi.string().optional(),
-  personalWebsite: Joi.string().uri().optional(),
-  phoneNumber: Joi.string().optional(),
-  cacUrl: Joi.string().uri().optional(),
-  financialStatementsUrl: Joi.string().uri().optional()
-});
-
-const updateInvestorProfileSchema = Joi.object<UpdateInvestorProfileBody>({
-  lookingOutFor: Joi.string().optional(),
-  stagePreference: Joi.string().optional(),
-  investorType: Joi.string().optional(),
-  yearsOfInvestmentExperience: Joi.string().optional(),
-  communicationPreference: Joi.string().optional()
-});
-
 // ---------------------------------------------------------------------------
 // PATCH /api/profile/startup
 // Authenticated business_owner — updates their startup profile.
@@ -84,6 +34,17 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
     return;
   }
 
+  // coreLeadership arrives as a JSON string when sent via form-data
+  // Parse it before validation so Joi sees the real array
+  if (req.body.coreLeadership && typeof req.body.coreLeadership === 'string') {
+    try {
+      req.body.coreLeadership = JSON.parse(req.body.coreLeadership);
+    } catch {
+      res.status(400).json(createErrorResponse('coreLeadership must be a valid JSON array.'));
+      return;
+    }
+  }
+
   const validation = ValidationHelper.validateObject(
     req.body,
     Joi.object({
@@ -96,14 +57,25 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
 
       // Match score critical fields
       traction: Joi.string().optional(),
-      marketSize: Joi.string().optional(),
-      totalAddressableMarket: Joi.string().optional(),
+      marketSize: Joi.number().optional(),
+      totalAddressableMarket: Joi.number().optional(),
+      currency: Joi.string().length(3).uppercase().optional(),
       pitchDeckCoverAndTagline: Joi.string().optional(),
+      pitchVideoUrl: Joi.string().optional(),
       visionAndMission: Joi.string().optional(),
 
       // Contact
       personalWebsite: Joi.string().uri().optional(),
-      phoneNumber: Joi.string().optional()
+      phoneNumber: Joi.string().optional(),
+      coreLeadership: Joi.array()
+        .items(
+          Joi.object({
+            firstName: Joi.string().required(),
+            lastName: Joi.string().required(),
+            position: Joi.string().required()
+          })
+        )
+        .optional()
     })
   );
 
@@ -121,35 +93,41 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
     traction,
     marketSize,
     totalAddressableMarket,
+    currency,
     pitchDeckCoverAndTagline,
+    pitchVideoUrl,
     visionAndMission,
     personalWebsite,
-    phoneNumber
+    phoneNumber,
+    coreLeadership
   } = validation.value;
 
-  // Handle file uploads if any were attached
-  // Expects field names: cacFile, financialFile
-  let uploadedCacUrl: string | undefined;
-  let uploadedFinancialUrl: string | undefined;
-
+  // ---------------------------------------------------------------------------
+  // Handle proof file uploads
+  // Field names expected from the client:
+  //   cacFile | pitchDeckFile | businessPlanFile | financialModelFile
+  // ---------------------------------------------------------------------------
   const files = req.files as Record<string, Express.Multer.File[]> | undefined;
 
-  if (files?.cacFile?.[0]) {
-    const upload = await fileUploadService.upload(files.cacFile[0].buffer, files.cacFile[0].mimetype, 'phoenix_nest_proofs');
-    if (upload.err) {
-      res.status(500).json(createErrorResponse('Failed to upload CAC document.'));
-      return;
-    }
-    uploadedCacUrl = upload.value;
-  }
+  const proofUploads: Record<string, string> = {};
 
-  if (files?.financialFile?.[0]) {
-    const upload = await fileUploadService.upload(files.financialFile[0].buffer, files.financialFile[0].mimetype, 'phoenix_nest_proofs');
-    if (upload.err) {
-      res.status(500).json(createErrorResponse('Failed to upload financial statements.'));
-      return;
+  const fileFieldMap: Record<string, string> = {
+    cacFile: 'cac',
+    pitchDeckFile: 'pitchDeck',
+    businessPlanFile: 'businessPlan',
+    financialModelFile: 'financialModel'
+  };
+
+  for (const [fieldName, proofKey] of Object.entries(fileFieldMap)) {
+    const file = files?.[fieldName]?.[0];
+    if (file) {
+      const upload = await fileUploadService.upload(file.buffer, file.mimetype, 'phoenix_nest_proofs');
+      if (upload.err) {
+        res.status(500).json(createErrorResponse(`Failed to upload ${fieldName}.`));
+        return;
+      }
+      proofUploads[proofKey] = upload.value!;
     }
-    uploadedFinancialUrl = upload.value;
   }
 
   // Build update payload — only include fields that were actually sent
@@ -163,8 +141,11 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
   if (traction !== undefined) updateData.traction = traction;
   if (marketSize !== undefined) updateData.marketSize = marketSize;
   if (totalAddressableMarket !== undefined) updateData.totalAddressableMarket = totalAddressableMarket;
+  if (currency !== undefined) updateData.currency = currency;
   if (pitchDeckCoverAndTagline !== undefined) updateData.pitchDeckCoverAndTagline = pitchDeckCoverAndTagline;
+  if (pitchVideoUrl !== undefined) updateData.pitchVideoUrl = pitchVideoUrl;
   if (visionAndMission !== undefined) updateData.visionAndMission = visionAndMission;
+  if (coreLeadership !== undefined) updateData.coreLeadership = coreLeadership;
 
   if (personalWebsite !== undefined || phoneNumber !== undefined) {
     updateData.contactInformation = {};
@@ -172,11 +153,8 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
     if (phoneNumber !== undefined) updateData.contactInformation.phoneNumber = phoneNumber;
   }
 
-  // Proof: only set if files were uploaded
-  if (uploadedCacUrl || uploadedFinancialUrl) {
-    updateData.proof = {};
-    if (uploadedCacUrl) updateData.proof.cac = uploadedCacUrl;
-    if (uploadedFinancialUrl) updateData.proof.financialStatements = uploadedFinancialUrl;
+  if (Object.keys(proofUploads).length > 0) {
+    updateData.proof = proofUploads;
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -186,7 +164,7 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
 
   const updateResult = await startUpProfileRepository.updateByUserId(userId, updateData);
   if (updateResult.err) {
-    res.status(500).json(createErrorResponse('Failed to update startup profile.'));
+    res.status(500).json(createErrorResponse(updateResult.err.message || 'Failed to update startup profile.'));
     return;
   }
 
@@ -196,12 +174,11 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
   }
 
   res.status(200).json(createSuccessResponse(updateResult.value, 'Startup profile updated successfully.'));
-};;
+};
 
 // ---------------------------------------------------------------------------
 // PATCH /api/profile/investor
 // Authenticated investor — updates their investor profile preferences.
-// These are the fields that directly power the match score.
 // ---------------------------------------------------------------------------
 export const updateInvestorProfile = async (req: Request, res: Response) => {
   const { userId } = req.auth;

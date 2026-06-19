@@ -10,9 +10,19 @@ interface Picture {
   productScreenshotsUrl?: string;
 }
 
+// Each member of the founding/leadership team
+interface CoreLeadershipMember {
+  firstName: string;
+  lastName: string;
+  position: string; // e.g. "Chief Executive", "CTO / Founder", "Strategy Lead"
+}
+
+// Documents the startup uploads to prove legitimacy and readiness
 interface Proof {
-  cac?: string;
-  financialStatements?: string;
+  cac?: string; // CAC registration document URL
+  pitchDeck?: string; // Pitch deck PDF URL
+  businessPlan?: string; // Business plan document URL
+  financialModel?: string; // Financial model / projections URL
 }
 
 export interface IStartUpProfile extends Document {
@@ -33,12 +43,19 @@ export interface IStartUpProfile extends Document {
   biography?: string;
   areaOfExperience?: string;
   contactInformation?: ContactInformation;
-  traction?: string;
-  marketSize?: string;
-  totalAddressableMarket?: string;
+  traction?: string; // Kept as string — e.g. "140% YoY Growth, FDA Phase I Clear"
+  // Stored as plain numbers so they can be sorted/filtered later.
+  // The currency field (ISO 4217) applies to both.
+  // e.g. marketSize: 500000000000, currency: "NGN"
+  marketSize?: number;
+  totalAddressableMarket?: number;
+  currency?: string; // e.g. "NGN", "USD"
+
   picture: Picture[];
+  coreLeadership?: CoreLeadershipMember[];
   proof?: Proof;
   pitchDeckCoverAndTagline?: string;
+  pitchVideoUrl?: string;
   visionAndMission?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -64,26 +81,37 @@ const StartUpProfileSchema = new Schema<IStartUpProfile>(
     areaOfExperience: { type: String },
     contactInformation: {
       personalWebsite: { type: String },
-      phoneNumber: { type: String },
+      phoneNumber: { type: String }
     },
     traction: { type: String },
-    marketSize: { type: String },
-    totalAddressableMarket: { type: String },
+    marketSize: { type: Number },
+    totalAddressableMarket: { type: Number },
+    currency: { type: String, uppercase: true, trim: true }, // ISO 4217 e.g. "NGN"
     picture: [
       {
         teamProfiles: { type: String },
-        productScreenshotsUrl: { type: String },
-      },
+        productScreenshotsUrl: { type: String }
+      }
+    ],
+    coreLeadership: [
+      {
+        firstName: { type: String, required: true },
+        lastName: { type: String, required: true },
+        position: { type: String, required: true }
+      }
     ],
     proof: {
       cac: { type: String },
-      financialStatements: { type: String },
+      pitchDeck: { type: String },
+      businessPlan: { type: String },
+      financialModel: { type: String }
     },
     pitchDeckCoverAndTagline: { type: String },
-    visionAndMission: { type: String },
+    pitchVideoUrl: { type: String },
+    visionAndMission: { type: String }
   },
   {
-    timestamps: true,
+    timestamps: true
   }
 );
 
