@@ -4,45 +4,33 @@ import { ValidationHelper } from '../helpers/validation.helper';
 import { startUpProfileRepository } from '../repositories/startUpProfile.repository';
 import { investorProfileRepository } from '../repositories/investorProfile.repository';
 import { usersRepository } from '../repositories/users.repository';
-import { fileUploadService } from '../services/fileUpload.service';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
+import { httpStatus } from '../helpers/httpStatus.utils';
 
 // ---------------------------------------------------------------------------
 // PATCH /api/profile/startup
 // Authenticated business_owner — updates their startup profile.
-// All fields are optional; only what's sent gets updated.
-//
-// Accepts multipart/form-data when uploading proof documents.
-// For text-only updates, application/json is fine.
+// All fields are optional; only what's sent gets updated. JSON body only —
+// any file-backed field (logoUrl, proof.*, coreLeadership[].imageUrl) is a
+// URL obtained beforehand from POST /api/uploads.
 // ---------------------------------------------------------------------------
 export const updateStartupProfile = async (req: Request, res: Response) => {
   const { userId } = req.auth;
 
   if (!userId) {
-    res.status(401).json(createErrorResponse('Unauthorised.'));
+    res.status(httpStatus.unauthorized).json(createErrorResponse('Unauthorised.'));
     return;
   }
 
   const userResult = await usersRepository.findById(userId);
   if (userResult.err || !userResult.value) {
-    res.status(500).json(createErrorResponse('Failed to retrieve user.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve user.'));
     return;
   }
 
   if (userResult.value.profile !== 'business_owner') {
-    res.status(403).json(createErrorResponse('Only startup accounts can update a startup profile.'));
+    res.status(httpStatus.forbidden).json(createErrorResponse('Only startup accounts can update a startup profile.'));
     return;
-  }
-
-  // coreLeadership arrives as a JSON string when sent via form-data
-  // Parse it before validation so Joi sees the real array
-  if (req.body.coreLeadership && typeof req.body.coreLeadership === 'string') {
-    try {
-      req.body.coreLeadership = JSON.parse(req.body.coreLeadership);
-    } catch {
-      res.status(400).json(createErrorResponse('coreLeadership must be a valid JSON array.'));
-      return;
-    }
   }
 
   const validation = ValidationHelper.validateObject(
@@ -63,6 +51,7 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
       pitchDeckCoverAndTagline: Joi.string().optional(),
       pitchVideoUrl: Joi.string().optional(),
       visionAndMission: Joi.string().optional(),
+      logoUrl: Joi.string().uri().optional(),
 
       // Contact
       personalWebsite: Joi.string().uri().optional(),
@@ -72,15 +61,24 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
           Joi.object({
             firstName: Joi.string().required(),
             lastName: Joi.string().required(),
-            position: Joi.string().required()
+            position: Joi.string().required(),
+            imageUrl: Joi.string().uri().optional()
           })
         )
-        .optional()
+        .optional(),
+
+      // Documents — URLs obtained from POST /api/uploads
+      proof: Joi.object({
+        cac: Joi.string().uri().optional(),
+        pitchDeck: Joi.string().uri().optional(),
+        businessPlan: Joi.string().uri().optional(),
+        financialModel: Joi.string().uri().optional()
+      }).optional()
     })
   );
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -97,38 +95,12 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
     pitchDeckCoverAndTagline,
     pitchVideoUrl,
     visionAndMission,
+    logoUrl,
     personalWebsite,
     phoneNumber,
-    coreLeadership
+    coreLeadership,
+    proof
   } = validation.value;
-
-  // ---------------------------------------------------------------------------
-  // Handle proof file uploads
-  // Field names expected from the client:
-  //   cacFile | pitchDeckFile | businessPlanFile | financialModelFile
-  // ---------------------------------------------------------------------------
-  const files = req.files as Record<string, Express.Multer.File[]> | undefined;
-
-  const proofUploads: Record<string, string> = {};
-
-  const fileFieldMap: Record<string, string> = {
-    cacFile: 'cac',
-    pitchDeckFile: 'pitchDeck',
-    businessPlanFile: 'businessPlan',
-    financialModelFile: 'financialModel'
-  };
-
-  for (const [fieldName, proofKey] of Object.entries(fileFieldMap)) {
-    const file = files?.[fieldName]?.[0];
-    if (file) {
-      const upload = await fileUploadService.upload(file.buffer, file.mimetype, 'phoenix_nest_proofs');
-      if (upload.err) {
-        res.status(500).json(createErrorResponse(`Failed to upload ${fieldName}.`));
-        return;
-      }
-      proofUploads[proofKey] = upload.value!;
-    }
-  }
 
   // Build update payload — only include fields that were actually sent
   const updateData: Record<string, any> = {};
@@ -145,6 +117,7 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
   if (pitchDeckCoverAndTagline !== undefined) updateData.pitchDeckCoverAndTagline = pitchDeckCoverAndTagline;
   if (pitchVideoUrl !== undefined) updateData.pitchVideoUrl = pitchVideoUrl;
   if (visionAndMission !== undefined) updateData.visionAndMission = visionAndMission;
+  if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
   if (coreLeadership !== undefined) updateData.coreLeadership = coreLeadership;
 
   if (personalWebsite !== undefined || phoneNumber !== undefined) {
@@ -153,27 +126,34 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
     if (phoneNumber !== undefined) updateData.contactInformation.phoneNumber = phoneNumber;
   }
 
-  if (Object.keys(proofUploads).length > 0) {
-    updateData.proof = proofUploads;
+  if (proof !== undefined) {
+    // findOneAndUpdate does a flat $set on `proof`, which would wipe out
+    // previously-set document links if we didn't merge with what's there.
+    const currentProfileResult = await startUpProfileRepository.findByUserId(userId);
+    if (currentProfileResult.err) {
+      res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve existing startup profile.'));
+      return;
+    }
+    updateData.proof = { ...currentProfileResult.value?.proof, ...proof };
   }
 
   if (Object.keys(updateData).length === 0) {
-    res.status(400).json(createErrorResponse('No fields provided to update.'));
+    res.status(httpStatus.badRequest).json(createErrorResponse('No fields provided to update.'));
     return;
   }
 
   const updateResult = await startUpProfileRepository.updateByUserId(userId, updateData);
   if (updateResult.err) {
-    res.status(500).json(createErrorResponse(updateResult.err.message || 'Failed to update startup profile.'));
+    res.status(httpStatus.serverError).json(createErrorResponse(updateResult.err.message || 'Failed to update startup profile.'));
     return;
   }
 
   if (!updateResult.value) {
-    res.status(404).json(createErrorResponse('Startup profile not found.'));
+    res.status(httpStatus.notFound).json(createErrorResponse('Startup profile not found.'));
     return;
   }
 
-  res.status(200).json(createSuccessResponse(updateResult.value, 'Startup profile updated successfully.'));
+  res.status(httpStatus.ok).json(createSuccessResponse(updateResult.value, 'Startup profile updated successfully.'));
 };
 
 // ---------------------------------------------------------------------------
@@ -184,18 +164,18 @@ export const updateInvestorProfile = async (req: Request, res: Response) => {
   const { userId } = req.auth;
 
   if (!userId) {
-    res.status(401).json(createErrorResponse('Unauthorised.'));
+    res.status(httpStatus.unauthorized).json(createErrorResponse('Unauthorised.'));
     return;
   }
 
   const userResult = await usersRepository.findById(userId);
   if (userResult.err || !userResult.value) {
-    res.status(500).json(createErrorResponse('Failed to retrieve user.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve user.'));
     return;
   }
 
   if (userResult.value.profile !== 'investor') {
-    res.status(403).json(createErrorResponse('Only investor accounts can update an investor profile.'));
+    res.status(httpStatus.forbidden).json(createErrorResponse('Only investor accounts can update an investor profile.'));
     return;
   }
 
@@ -206,16 +186,17 @@ export const updateInvestorProfile = async (req: Request, res: Response) => {
       stagePreference: Joi.string().optional(), // e.g. "Seed"
       investorType: Joi.string().optional(), // e.g. "Angel"
       yearsOfInvestmentExperience: Joi.string().optional(),
-      communicationPreference: Joi.string().optional()
+      communicationPreference: Joi.string().optional(),
+      avatarUrl: Joi.string().uri().optional()
     })
   );
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
-  const { lookingOutFor, stagePreference, investorType, yearsOfInvestmentExperience, communicationPreference } = validation.value;
+  const { lookingOutFor, stagePreference, investorType, yearsOfInvestmentExperience, communicationPreference, avatarUrl } = validation.value;
 
   const updateData: Record<string, any> = {};
 
@@ -224,24 +205,25 @@ export const updateInvestorProfile = async (req: Request, res: Response) => {
   if (investorType !== undefined) updateData.investorType = investorType;
   if (yearsOfInvestmentExperience !== undefined) updateData.yearsOfInvestmentExperience = yearsOfInvestmentExperience;
   if (communicationPreference !== undefined) updateData.communicationPreference = communicationPreference;
+  if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
 
   if (Object.keys(updateData).length === 0) {
-    res.status(400).json(createErrorResponse('No fields provided to update.'));
+    res.status(httpStatus.badRequest).json(createErrorResponse('No fields provided to update.'));
     return;
   }
 
   const updateResult = await investorProfileRepository.updateByUserId(userId, updateData);
   if (updateResult.err) {
-    res.status(500).json(createErrorResponse('Failed to update investor profile.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to update investor profile.'));
     return;
   }
 
   if (!updateResult.value) {
-    res.status(404).json(createErrorResponse('Investor profile not found.'));
+    res.status(httpStatus.notFound).json(createErrorResponse('Investor profile not found.'));
     return;
   }
 
-  res.status(200).json(createSuccessResponse(updateResult.value, 'Investor profile updated successfully.'));
+  res.status(httpStatus.ok).json(createSuccessResponse(updateResult.value, 'Investor profile updated successfully.'));
 };
 
 // ---------------------------------------------------------------------------
@@ -252,13 +234,13 @@ export const getMyProfile = async (req: Request, res: Response) => {
   const { userId } = req.auth;
 
   if (!userId) {
-    res.status(401).json(createErrorResponse('Unauthorised.'));
+    res.status(httpStatus.unauthorized).json(createErrorResponse('Unauthorised.'));
     return;
   }
 
   const userResult = await usersRepository.findById(userId);
   if (userResult.err || !userResult.value) {
-    res.status(500).json(createErrorResponse('Failed to retrieve user.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve user.'));
     return;
   }
 
@@ -267,16 +249,16 @@ export const getMyProfile = async (req: Request, res: Response) => {
   if (user.profile === 'business_owner') {
     const profileResult = await startUpProfileRepository.findByUserIdWithUser(userId);
     if (profileResult.err) {
-      res.status(500).json(createErrorResponse('Failed to retrieve startup profile.'));
+      res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve startup profile.'));
       return;
     }
-    res.status(200).json(createSuccessResponse(profileResult.value, 'Profile retrieved successfully.'));
+    res.status(httpStatus.ok).json(createSuccessResponse(profileResult.value, 'Profile retrieved successfully.'));
   } else {
     const profileResult = await investorProfileRepository.findByUserIdWithUser(userId);
     if (profileResult.err) {
-      res.status(500).json(createErrorResponse('Failed to retrieve investor profile.'));
+      res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve investor profile.'));
       return;
     }
-    res.status(200).json(createSuccessResponse(profileResult.value, 'Profile retrieved successfully.'));
+    res.status(httpStatus.ok).json(createSuccessResponse(profileResult.value, 'Profile retrieved successfully.'));
   }
 };

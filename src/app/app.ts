@@ -3,6 +3,7 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import morganBody from 'morgan-body';
 import apiRoutes from '../routes';
+import { httpStatus } from '../helpers/httpStatus.utils';
 
 const app = express();
 
@@ -25,7 +26,7 @@ app.use('/api', apiRoutes);
 
 // Sample route
 app.get('/', (req: Request, res: Response) => {
-  res.status(200).json({
+  res.status(httpStatus.ok).json({
     name: 'Phoenix Nest Backend',
     status: 'Running',
     description: 'Backend API for Phoenix Nest Application'

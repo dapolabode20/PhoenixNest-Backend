@@ -12,6 +12,7 @@ export interface IInvestorProfile extends Document {
   yearsOfInvestmentExperience?: string;
   investorType?: string;
   communicationPreference?: string;
+  avatarUrl?: string;
 }
 
 const InvestorProfileSchema = new Schema<IInvestorProfile>(
@@ -26,7 +27,8 @@ const InvestorProfileSchema = new Schema<IInvestorProfile>(
     stagePreference: { type: String },
     yearsOfInvestmentExperience: { type: String },
     investorType: { type: String },
-    communicationPreference: { type: String }
+    communicationPreference: { type: String },
+    avatarUrl: { type: String }
   },
   {
     timestamps: true

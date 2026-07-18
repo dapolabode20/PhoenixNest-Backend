@@ -15,6 +15,7 @@ interface CoreLeadershipMember {
   firstName: string;
   lastName: string;
   position: string; // e.g. "Chief Executive", "CTO / Founder", "Strategy Lead"
+  imageUrl?: string;
 }
 
 // Documents the startup uploads to prove legitimacy and readiness
@@ -57,6 +58,7 @@ export interface IStartUpProfile extends Document {
   pitchDeckCoverAndTagline?: string;
   pitchVideoUrl?: string;
   visionAndMission?: string;
+  logoUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -97,7 +99,8 @@ const StartUpProfileSchema = new Schema<IStartUpProfile>(
       {
         firstName: { type: String, required: true },
         lastName: { type: String, required: true },
-        position: { type: String, required: true }
+        position: { type: String, required: true },
+        imageUrl: { type: String }
       }
     ],
     proof: {
@@ -108,7 +111,8 @@ const StartUpProfileSchema = new Schema<IStartUpProfile>(
     },
     pitchDeckCoverAndTagline: { type: String },
     pitchVideoUrl: { type: String },
-    visionAndMission: { type: String }
+    visionAndMission: { type: String },
+    logoUrl: { type: String }
   },
   {
     timestamps: true
