@@ -24,10 +24,11 @@
   "homepage": "https://github.com/dapolabode20/PhoenixNest-Backend#readme",
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/multer": "^1.4.12",
     "@types/joi": "^17.2.2",
     "@types/mongoose": "^5.11.96",
+    "@types/multer": "^1.4.12",
     "@types/node": "^25.1.0",
+    "@types/nodemailer": "^6.4.24",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
@@ -37,7 +38,6 @@
     "bcryptjs": "^3.0.3",
     "body-parser": "^1.20.3",
     "cloudinary": "^2.5.1",
-    "multer": "^1.4.5-lts.1",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
@@ -47,6 +47,11 @@
     "mongodb": "^7.0.0",
     "mongoose": "^9.1.5",
     "morgan": "^1.10.1",
-    "morgan-body": "^2.6.9"
+    "morgan-body": "^2.6.9",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.10.1"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
