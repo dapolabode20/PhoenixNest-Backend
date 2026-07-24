@@ -28,7 +28,7 @@ export class UsersRepository implements IUserRepository {
 
   async deleteUser(email: string): Promise<Result<boolean>> {
     try {
-      const result = await this.model.deleteOne({ email }).exec();
+      const result = await this.model.deleteOne({ email: email.toLowerCase().trim() }).exec();
       return Result.value(result.deletedCount === 1);
     } catch (error) {
       return Result.error(new Error('Failed to delete user'));
@@ -37,7 +37,7 @@ export class UsersRepository implements IUserRepository {
 
   async findUserByEmail(email: string): Promise<Result<IUser | null>> {
     try {
-      const user = await this.model.findOne({ email }).exec();
+      const user = await this.model.findOne({ email: email.toLowerCase().trim() }).exec();
       return Result.value(user);
     } catch (error) {
       return Result.error(new Error('Failed to find user by email'));
@@ -64,7 +64,7 @@ export class UsersRepository implements IUserRepository {
 
   async updateUser(email: string, userData: Partial<IUser>): Promise<Result<IUser | null>> {
     try {
-      const user = await this.model.findOneAndUpdate({ email }, userData, { new: true }).exec();
+      const user = await this.model.findOneAndUpdate({ email: email.toLowerCase().trim() }, userData, { new: true }).exec();
       return Result.value(user);
     } catch (error) {
       return Result.error(new Error('Failed to update user'));

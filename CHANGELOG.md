@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.5] - 2026-07-24
+---
+### Fixed
+- Fixed forgot-password (and login/register) reporting "user not found" for emails saved with different casing than stored, by normalizing email lookups in `users.repository.ts`.
+- Fixed `Result.value(null)` throwing instead of representing a valid "not found" result, which was masking real 404s as 500s across every repository.
+
+------
 ## [1.1.4] - 2026-07-18
 ---
 ### Added

@@ -11,8 +11,9 @@ import { httpStatus } from '../helpers/httpStatus.utils';
 // PATCH /api/profile/startup
 // Authenticated business_owner — updates their startup profile.
 // All fields are optional; only what's sent gets updated. JSON body only —
-// any file-backed field (logoUrl, proof.*, coreLeadership[].imageUrl) is a
-// URL obtained beforehand from POST /api/uploads.
+// any file-backed field (logoUrl, cacUrl/pitchDeckUrl/businessPlanUrl/
+// financialModelUrl, coreLeadership[].imageUrl) is a URL obtained beforehand
+// from POST /api/uploads.
 // ---------------------------------------------------------------------------
 export const updateStartupProfile = async (req: Request, res: Response) => {
   const { userId } = req.auth;
@@ -56,9 +57,13 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
       // Contact
       personalWebsite: Joi.string().uri().optional(),
       phoneNumber: Joi.string().optional(),
+      // Each item updates the matching existing member by `_id`, or is
+      // appended as a new member if `_id` is omitted/unrecognised. Members
+      // not included here are left untouched.
       coreLeadership: Joi.array()
         .items(
           Joi.object({
+            _id: Joi.string().optional(),
             firstName: Joi.string().required(),
             lastName: Joi.string().required(),
             position: Joi.string().required(),
@@ -67,13 +72,12 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
         )
         .optional(),
 
-      // Documents — URLs obtained from POST /api/uploads
-      proof: Joi.object({
-        cac: Joi.string().uri().optional(),
-        pitchDeck: Joi.string().uri().optional(),
-        businessPlan: Joi.string().uri().optional(),
-        financialModel: Joi.string().uri().optional()
-      }).optional()
+      // Documents — URLs obtained from POST /api/uploads. Flat fields so
+      // each one updates independently without touching the others.
+      cacUrl: Joi.string().uri().optional(),
+      pitchDeckUrl: Joi.string().uri().optional(),
+      businessPlanUrl: Joi.string().uri().optional(),
+      financialModelUrl: Joi.string().uri().optional()
     })
   );
 
@@ -99,7 +103,10 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
     personalWebsite,
     phoneNumber,
     coreLeadership,
-    proof
+    cacUrl,
+    pitchDeckUrl,
+    businessPlanUrl,
+    financialModelUrl
   } = validation.value;
 
   // Build update payload — only include fields that were actually sent
@@ -118,7 +125,6 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
   if (pitchVideoUrl !== undefined) updateData.pitchVideoUrl = pitchVideoUrl;
   if (visionAndMission !== undefined) updateData.visionAndMission = visionAndMission;
   if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
-  if (coreLeadership !== undefined) updateData.coreLeadership = coreLeadership;
 
   if (personalWebsite !== undefined || phoneNumber !== undefined) {
     updateData.contactInformation = {};
@@ -126,15 +132,38 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
     if (phoneNumber !== undefined) updateData.contactInformation.phoneNumber = phoneNumber;
   }
 
-  if (proof !== undefined) {
-    // findOneAndUpdate does a flat $set on `proof`, which would wipe out
-    // previously-set document links if we didn't merge with what's there.
+  // Dot-notation keys so MongoDB's $set only touches the specific nested
+  // field sent — no need to fetch the profile first to avoid wiping siblings.
+  if (cacUrl !== undefined) updateData['proof.cac'] = cacUrl;
+  if (pitchDeckUrl !== undefined) updateData['proof.pitchDeck'] = pitchDeckUrl;
+  if (businessPlanUrl !== undefined) updateData['proof.businessPlan'] = businessPlanUrl;
+  if (financialModelUrl !== undefined) updateData['proof.financialModel'] = financialModelUrl;
+
+  if (coreLeadership !== undefined) {
+    // Array of subdocuments — dot-notation can't merge this, so fetch once
+    // and merge by `_id`: matched members are updated in place, unmatched
+    // incoming entries are appended, and members not mentioned are left alone.
     const currentProfileResult = await startUpProfileRepository.findByUserId(userId);
     if (currentProfileResult.err) {
       res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve existing startup profile.'));
       return;
     }
-    updateData.proof = { ...currentProfileResult.value?.proof, ...proof };
+
+    const existing = (currentProfileResult.value?.coreLeadership ?? []).map((member: any) =>
+      typeof member.toObject === 'function' ? member.toObject() : member
+    );
+    const merged = [...existing];
+
+    for (const incoming of coreLeadership) {
+      const index = incoming._id ? merged.findIndex((member) => member._id?.toString() === incoming._id) : -1;
+      if (index >= 0) {
+        merged[index] = { ...merged[index], ...incoming };
+      } else {
+        merged.push(incoming);
+      }
+    }
+
+    updateData.coreLeadership = merged;
   }
 
   if (Object.keys(updateData).length === 0) {
