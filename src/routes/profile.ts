@@ -13,15 +13,17 @@ router.get('/user', authenticate, getMyProfile);
 /**
  * PATCH /api/profile/startup
  * Updates the startup's profile — all fields optional. JSON body only.
- * File-backed fields (logoUrl, proof.*, coreLeadership[].imageUrl) are URLs
+ * File-backed fields (logoUrl, cacUrl/pitchDeckUrl/businessPlanUrl/financialModelUrl,
+ * coreLeadership[].imageUrl) are URLs
  * obtained beforehand from POST /api/uploads.
  *
  * Fields: location, shortBio, industry, biography, areaOfExperience,
  *         traction, marketSize, totalAddressableMarket, currency,
  *         pitchDeckCoverAndTagline, pitchVideoUrl, visionAndMission,
  *         personalWebsite, phoneNumber, logoUrl,
- *         proof: { cac, pitchDeck, businessPlan, financialModel },
- *         coreLeadership: [{ firstName, lastName, position, imageUrl }]
+ *         cacUrl, pitchDeckUrl, businessPlanUrl, financialModelUrl,
+ *         coreLeadership: [{ _id?, firstName, lastName, position, imageUrl }]
+ *           (_id targets an existing member to update; omit to add a new one)
  */
 router.patch('/startup', authenticate, updateStartupProfile);
 
