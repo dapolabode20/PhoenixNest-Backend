@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.6] - 2026-07-28
+---
+### Changed
+- Changed OTP/password-reset email delivery from Nodemailer/SMTP to Brevo's HTTP transactional email API — SMTP calls from Render/Vercel were hanging ~2 minutes and failing silently due to Brevo's Authorized IPs restriction blocking their outbound IPs; the HTTP API isn't subject to that restriction and fails fast instead of hanging. Old SMTP implementation kept commented out in `email.service.ts` in case of rollback.
+- Changed OTP/password-reset email sends to fire-and-forget instead of blocking the HTTP response, so a slow/failed email provider can no longer delay the API response.
+
+------
 ## [1.1.5] - 2026-07-24
 ---
 ### Fixed
