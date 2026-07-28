@@ -8,6 +8,11 @@ export interface AppConfig {
   cloudinaryCloudName: string;
   cloudinaryApiKey: string;
   cloudinaryApiSecret: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  smtpFromAddress: string;
 }
 
 // Load environment variables
@@ -28,7 +33,12 @@ const config: AppConfig = {
   accessTokenSecret: getEnvVariable('ACCESS_TOKEN_SECRET'),
   cloudinaryCloudName: getEnvVariable('CLOUDINARY_CLOUD_NAME'),
   cloudinaryApiKey: getEnvVariable('CLOUDINARY_API_KEY'),
-  cloudinaryApiSecret: getEnvVariable('CLOUDINARY_API_SECRET')
+  cloudinaryApiSecret: getEnvVariable('CLOUDINARY_API_SECRET'),
+  smtpHost: getEnvVariable('SMTP_HOST'),
+  smtpPort: Number(process.env.SMTP_PORT) || 587,
+  smtpUser: getEnvVariable('SMTP_USER'),
+  smtpPass: getEnvVariable('SMTP_PASS'),
+  smtpFromAddress: getEnvVariable('SMTP_FROM_ADDRESS')
 };
 
 // const _loggable: any = { ...config };

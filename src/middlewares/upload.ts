@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import { Request, Response, NextFunction } from 'express';
 import { createErrorResponse } from '../helpers/response.utils';
+import { httpStatus } from '../helpers/httpStatus.utils';
 
 const storage = multer.memoryStorage(); // Store file in memory as buffer
 
@@ -30,12 +31,12 @@ export const handleUploadError = (err: unknown, req: Request, res: Response, nex
   }
 
   if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-    res.status(413).json(createErrorResponse('File size must not exceed 5MB'));
+    res.status(httpStatus.payloadTooLarge).json(createErrorResponse('File size must not exceed 5MB'));
     return;
   }
 
   if (err instanceof Error && err.message === 'Only images and PDF files are allowed.') {
-    res.status(400).json(createErrorResponse(err.message));
+    res.status(httpStatus.badRequest).json(createErrorResponse(err.message));
     return;
   }
 

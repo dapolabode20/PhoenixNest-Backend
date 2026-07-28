@@ -9,8 +9,17 @@ import { tokenRepository } from '../repositories/token.repository';
 import { startUpProfileRepository } from '../repositories/startUpProfile.repository';
 import { investorProfileRepository } from '../repositories/investorProfile.repository';
 import { otpService } from '../services/otp.service';
-import { fileUploadService } from '../services/fileUpload.service';
+import { emailService } from '../services/email.service';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
+import { httpStatus } from '../helpers/httpStatus.utils';
+import config from '../config/config';
+
+// TODO: remove this once the frontend fully relies on real OTP email delivery
+// and no longer needs the code echoed back in the response for testing.
+// Restricted to non-production so it never leaks in a live deployment.
+function otpDebugField(otp: string) {
+  return config.environment === 'production' ? {} : { otp };
+}
 
 export const loginUser = async (req: Request, res: Response) => {
   const validation = ValidationHelper.validateObject(req.body, Joi.object({
@@ -19,7 +28,7 @@ export const loginUser = async (req: Request, res: Response) => {
   }));
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -27,13 +36,13 @@ export const loginUser = async (req: Request, res: Response) => {
 
   const userResult = await usersRepository.findUserByEmail(email);
   if (userResult.err) {
-    res.status(500).json(createErrorResponse(userResult.err.message || 'An error occurred while retrieving user.', userResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(userResult.err.message || 'An error occurred while retrieving user.', userResult.err));
     return;
   }
 
   const user = userResult.value;
   if (!user) {
-    res.status(404).json(createErrorResponse('User not found.'));
+    res.status(httpStatus.notFound).json(createErrorResponse('User not found.'));
     return;
   }
 
@@ -41,7 +50,7 @@ export const loginUser = async (req: Request, res: Response) => {
     // Check if OTP is still valid
     const otpRecordResult = await otpRepository.findOtpByEmail(email);
     if (otpRecordResult.err) {
-      res.status(500).json(createErrorResponse(otpRecordResult.err.message || 'An error occurred while retrieving OTP.', otpRecordResult.err));
+      res.status(httpStatus.serverError).json(createErrorResponse(otpRecordResult.err.message || 'An error occurred while retrieving OTP.', otpRecordResult.err));
       return;
     }
 
@@ -52,7 +61,7 @@ export const loginUser = async (req: Request, res: Response) => {
       // Generate new OTP if the previous one has expired
       const generateOtpResult = await otpService.generateOtp(email);
       if (generateOtpResult.err) {
-        res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+        res.status(httpStatus.serverError).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
         return;
       }
       const otpResult = generateOtpResult.value!;
@@ -65,28 +74,29 @@ export const loginUser = async (req: Request, res: Response) => {
       };
       const saveOtpResult = await otpRepository.saveOtp(otpRecord);
       if (saveOtpResult.err) {
-        res.status(500).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
+        res.status(httpStatus.serverError).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
         return;
       }
 
-      // Send new OTP via email here (Email service integration needed)
       code = otpResult.otp;
       expiresAt = otpResult.expiresAt;
-      // sendEmail(email, 'Your OTP Code', `Your OTP code is ${emailPayload.otp} and it expires at ${emailPayload.expiresAt}`);
+      emailService.sendOtpEmail(email, code, expiresAt).then((sendResult) => {
+        if (sendResult.err) console.log(sendResult.err.message);
+      });
     } else {
       code = otpRecord.otp;
       expiresAt = otpRecord.expiresAt;
     }
-    res.status(403).json(createErrorResponse('Email not verified. Please verify your email before logging in.', {
-      otp: code,
-      expiresAt
+    res.status(httpStatus.forbidden).json(createErrorResponse('Email not verified. Please verify your email before logging in.', {
+      expiresAt,
+      ...otpDebugField(code)
     } ));
     return;
   }
 
   const passwordMatch = await bcrypt.compare(password, user.password);
   if (!passwordMatch) {
-    res.status(401).json(createErrorResponse('Invalid credentials.'));
+    res.status(httpStatus.unauthorized).json(createErrorResponse('Invalid credentials.'));
     return;
   }
 
@@ -108,10 +118,11 @@ export const loginUser = async (req: Request, res: Response) => {
 await tokenRepository.createToken({ userId: user._id as any, token: tokenResult.token, expiresAt: tokenResult.expiresAt });
   }
 
-  res.status(200).json(createSuccessResponse({
+  res.status(httpStatus.ok).json(createSuccessResponse({
     token: tokenResult.token,
     userId: user._id,
-    email: user.email
+    email: user.email,
+    profile: user.profile
   }, 'Login successful.'));
 }
 
@@ -136,6 +147,7 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
       companyName: Joi.string().required(),
       registrationNumber: Joi.string().required(),
       identificationNumber: Joi.string().required(),
+      identificationDocumentUrl: Joi.string().uri().required(),
       identificationType: Joi.string().optional(),
       location: Joi.string().optional(),
       shortBio: Joi.string().optional(),
@@ -144,7 +156,7 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
   );
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -157,13 +169,13 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
 
   if (existingUserResult.value) {
     if (existingUserResult.value.isVerified) {
-      res.status(409).json(createErrorResponse('Email already in use.'));
+      res.status(httpStatus.conflict).json(createErrorResponse('Email already in use.'));
       return;
     }
 
     const generateOtpResult = await otpService.generateOtp(email);
     if (generateOtpResult.err) {
-      res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+      res.status(httpStatus.serverError).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
       return;
     }
 
@@ -171,31 +183,24 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     const otpRecord = { email, otp: otpResult.otp, expiresAt: otpResult.expiresAt };
     const saveOtpResult = await otpRepository.saveOtp(otpRecord);
     if (saveOtpResult.err) {
-      res.status(500).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
+      res.status(httpStatus.serverError).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
       return;
     }
 
-    res.status(200).json(
+    emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+      if (sendResult.err) console.log(sendResult.err.message);
+    });
+
+    res.status(httpStatus.ok).json(
       createSuccessResponse(
         {
           email,
-          otp: otpResult.otp,
-          expiresAt: otpResult.expiresAt
+          expiresAt: otpResult.expiresAt,
+          ...otpDebugField(otpResult.otp)
         },
         'Account exists but is not verified. A new OTP has been generated.'
       )
     );
-    return;
-  }
-
-  if (!req.file) {
-    res.status(400).json(createErrorResponse('Identification document is required.'));
-    return;
-  }
-
-  const uploadResult = await fileUploadService.upload(req.file.buffer, req.file.mimetype);
-  if (uploadResult.err) {
-    res.status(500).json(createErrorResponse(uploadResult.err.message || 'Failed to upload identification document.', uploadResult.err));
     return;
   }
 
@@ -210,7 +215,7 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     password: hashedPassword
   });
   if (newUserResult.err) {
-    res.status(500).json(createErrorResponse(newUserResult.err.message || 'An error occurred while creating the user.', newUserResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(newUserResult.err.message || 'An error occurred while creating the user.', newUserResult.err));
     return;
   }
 
@@ -222,20 +227,20 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     companyName: req.body.companyName,
     registrationNumber: req.body.registrationNumber,
     identificationNumber: req.body.identificationNumber,
-    identificationDocumentUrl: uploadResult.value!,
+    identificationDocumentUrl: req.body.identificationDocumentUrl,
     identificationType: req.body.identificationType,
     location: req.body.location,
     shortBio: req.body.shortBio,
     industry: req.body.industry
   });
   if (profileResult.err) {
-    res.status(500).json(createErrorResponse(profileResult.err.message || 'An error occurred while creating the startup profile.', profileResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(profileResult.err.message || 'An error occurred while creating the startup profile.', profileResult.err));
     return;
   }
 
   const generateOtpResult = await otpService.generateOtp(email);
   if (generateOtpResult.err) {
-    res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
     return;
   }
   const otpResult = generateOtpResult.value!;
@@ -244,17 +249,19 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
   const saveResult = await otpRepository.saveOtp(otpRecord);
 
   if (saveResult.err) {
-    res.status(500).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
     return;
   }
 
-  // Send otp via email here (Email service integration needed)
+  emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+    if (sendResult.err) console.log(sendResult.err.message);
+  });
 
-  res.status(201).json(
+  res.status(httpStatus.created).json(
     createSuccessResponse(
       {
         userId: newUser._id,
-        otp: otpResult.otp
+        ...otpDebugField(otpResult.otp)
       },
       'Business owner registered successfully. Verify email.'
     )
@@ -282,6 +289,7 @@ export const registerInvestor = async (req: Request, res: Response) => {
       firmName: Joi.string().required(),
       entityId: Joi.string().required(),
       identificationNumber: Joi.string().required(),
+      identificationDocumentUrl: Joi.string().uri().required(),
       lookingOutFor: Joi.string().optional(),
       stagePreference: Joi.string().optional(),
       yearsOfInvestmentExperience: Joi.string().optional(),
@@ -291,7 +299,7 @@ export const registerInvestor = async (req: Request, res: Response) => {
   );
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -304,13 +312,13 @@ export const registerInvestor = async (req: Request, res: Response) => {
 
   if (existingUserResult.value) {
     if (existingUserResult.value.isVerified) {
-      res.status(409).json(createErrorResponse('Email already in use.'));
+      res.status(httpStatus.conflict).json(createErrorResponse('Email already in use.'));
       return;
     }
 
     const generateOtpResult = await otpService.generateOtp(email);
     if (generateOtpResult.err) {
-      res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+      res.status(httpStatus.serverError).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
       return;
     }
 
@@ -318,31 +326,24 @@ export const registerInvestor = async (req: Request, res: Response) => {
     const otpRecord = { email, otp: otpResult.otp, expiresAt: otpResult.expiresAt };
     const saveOtpResult = await otpRepository.saveOtp(otpRecord);
     if (saveOtpResult.err) {
-      res.status(500).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
+      res.status(httpStatus.serverError).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
       return;
     }
 
-    res.status(200).json(
+    emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+      if (sendResult.err) console.log(sendResult.err.message);
+    });
+
+    res.status(httpStatus.ok).json(
       createSuccessResponse(
         {
           email,
-          otp: otpResult.otp,
-          expiresAt: otpResult.expiresAt
+          expiresAt: otpResult.expiresAt,
+          ...otpDebugField(otpResult.otp)
         },
         'Account exists but is not verified. A new OTP has been generated.'
       )
     );
-    return;
-  }
-
-  if (!req.file) {
-    res.status(400).json(createErrorResponse('Identification document is required.'));
-    return;
-  }
-
-  const uploadResult = await fileUploadService.upload(req.file.buffer, req.file.mimetype);
-  if (uploadResult.err) {
-    res.status(500).json(createErrorResponse(uploadResult.err.message || 'Failed to upload identification document.', uploadResult.err));
     return;
   }
 
@@ -357,7 +358,7 @@ export const registerInvestor = async (req: Request, res: Response) => {
     password: hashedPassword
   });
   if (newUserResult.err) {
-    res.status(500).json(createErrorResponse(newUserResult.err.message || 'An error occurred while creating the user.', newUserResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(newUserResult.err.message || 'An error occurred while creating the user.', newUserResult.err));
     return;
   }
 
@@ -369,7 +370,7 @@ export const registerInvestor = async (req: Request, res: Response) => {
     firmName: req.body.firmName,
     entityId: req.body.entityId,
     identificationNumber: req.body.identificationNumber,
-    identificationDocumentUrl: uploadResult.value!,
+    identificationDocumentUrl: req.body.identificationDocumentUrl,
     lookingOutFor: req.body.lookingOutFor,
     stagePreference: req.body.stagePreference,
     yearsOfInvestmentExperience: req.body.yearsOfInvestmentExperience,
@@ -377,13 +378,13 @@ export const registerInvestor = async (req: Request, res: Response) => {
     communicationPreference: req.body.communicationPreference
   });
   if (profileResult.err) {
-    res.status(500).json(createErrorResponse(profileResult.err.message || 'An error occurred while creating the investor profile.', profileResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(profileResult.err.message || 'An error occurred while creating the investor profile.', profileResult.err));
     return;
   }
 
   const generateOtpResult = await otpService.generateOtp(email);
   if (generateOtpResult.err) {
-    res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
     return;
   }
   const otpResult = generateOtpResult.value!;
@@ -392,17 +393,19 @@ export const registerInvestor = async (req: Request, res: Response) => {
   const saveResult = await otpRepository.saveOtp(otpRecord);
 
   if (saveResult.err) {
-    res.status(500).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
     return;
   }
 
-  // Send otp via email here (Email service integration needed)
+  emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+    if (sendResult.err) console.log(sendResult.err.message);
+  });
 
-  res.status(201).json(
+  res.status(httpStatus.created).json(
     createSuccessResponse(
       {
         userId: newUser._id,
-        otp: otpResult.otp
+        ...otpDebugField(otpResult.otp)
       },
       'Investor registered successfully. Verify email.'
     )
@@ -415,7 +418,7 @@ export const resendOtp = async (req: Request, res: Response) => {
   }));
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -424,25 +427,25 @@ export const resendOtp = async (req: Request, res: Response) => {
   // Check if user exists and is not verified
   const userResult = await usersRepository.findUserByEmail(email);
   if (userResult.err) {
-    res.status(500).json(createErrorResponse(userResult.err.message || 'An error occurred while retrieving user.', userResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(userResult.err.message || 'An error occurred while retrieving user.', userResult.err));
     return;
   }
 
   const user = userResult.value;
   if (!user) {
-    res.status(404).json(createErrorResponse('User not found.'));
+    res.status(httpStatus.notFound).json(createErrorResponse('User not found.'));
     return;
   }
 
   if (user.isVerified) {
-    res.status(400).json(createErrorResponse('Email is already verified.'));
+    res.status(httpStatus.badRequest).json(createErrorResponse('Email is already verified.'));
     return;
   }
 
   // Generate new OTP and save to database
   const generateOtpResult = await otpService.generateOtp(email);
   if (generateOtpResult.err) {
-    res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
     return;
   }
   const otpResult = generateOtpResult.value!;
@@ -454,16 +457,18 @@ export const resendOtp = async (req: Request, res: Response) => {
   };
   const saveOtpResult = await otpRepository.saveOtp(otpRecord);
   if (saveOtpResult.err) {
-    res.status(500).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(saveOtpResult.err.message || 'An error occurred while saving OTP.', saveOtpResult.err));
     return;
   }
 
-  // Send new OTP via email here (Email service integration needed)
+  emailService.sendOtpEmail(user.email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+    if (sendResult.err) console.log(sendResult.err.message);
+  });
 
-  res.status(200).json(createSuccessResponse({
+  res.status(httpStatus.ok).json(createSuccessResponse({
     email: user.email,
-    otp: otpResult.otp,
-    expiresAt: otpResult.expiresAt
+    expiresAt: otpResult.expiresAt,
+    ...otpDebugField(otpResult.otp)
   }, 'OTP resent successfully.'));
 }
 
@@ -474,7 +479,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
   }));
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -482,25 +487,25 @@ export const verifyOtp = async (req: Request, res: Response) => {
 
   const otpRecordResult = await otpRepository.findOtpByEmail(email);
   if (otpRecordResult.err) {
-    res.status(500).json(createErrorResponse(otpRecordResult.err.message || 'An error occurred while retrieving OTP.', otpRecordResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(otpRecordResult.err.message || 'An error occurred while retrieving OTP.', otpRecordResult.err));
     return;
   }
 
   const otpRecord = otpRecordResult.value;
   if (!otpRecord || otpRecord.otp !== otp) {
-    res.status(400).json(createErrorResponse('Invalid OTP.'));
+    res.status(httpStatus.badRequest).json(createErrorResponse('Invalid OTP.'));
     return;
   }
 
   if (otpRecord.expiresAt < new Date()) {
-    res.status(400).json(createErrorResponse('OTP has expired.'));
+    res.status(httpStatus.badRequest).json(createErrorResponse('OTP has expired.'));
     return;
   }
 
   // Mark user as verified
   const userResult = await usersRepository.findUserByEmail(email);
   if (userResult.err || !userResult.value) {
-    res.status(500).json(createErrorResponse('An error occurred while verifying user.', userResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse('An error occurred while verifying user.', userResult.err));
     return;
   }
 
@@ -508,14 +513,14 @@ export const verifyOtp = async (req: Request, res: Response) => {
   user.isVerified = true;
   const updateUserResult = await usersRepository.updateUser(email, user);
   if (updateUserResult.err) {
-    res.status(500).json(createErrorResponse(updateUserResult.err.message || 'An error occurred while updating user verification status.', updateUserResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(updateUserResult.err.message || 'An error occurred while updating user verification status.', updateUserResult.err));
     return;
   }
 
   // Delete OTP after successful verification
   await otpRepository.deleteOtp(email);
 
-  res.status(200).json(createSuccessResponse({
+  res.status(httpStatus.ok).json(createSuccessResponse({
     userId: user._id,
     email: user.email
   }, 'Email verified successfully.'));
@@ -529,7 +534,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
   }));
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -538,20 +543,20 @@ export const forgotPassword = async (req: Request, res: Response) => {
   // Check if user exists
   const userResult = await usersRepository.findUserByEmail(email);
   if (userResult.err) {
-    res.status(500).json(createErrorResponse(userResult.err.message || 'An error occurred while retrieving user.', userResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(userResult.err.message || 'An error occurred while retrieving user.', userResult.err));
     return;
   }
 
   const user = userResult.value;
   if (!user) {
-    res.status(404).json(createErrorResponse('User not found.'));
+    res.status(httpStatus.notFound).json(createErrorResponse('User not found.'));
     return;
   }
 
   // Generate OTP and send password reset email
   const generateOtpResult = await otpService.generateOtp(email);
   if (generateOtpResult.err) {
-    res.status(500).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(generateOtpResult.err.message || 'An error occurred while generating OTP.', generateOtpResult.err));
     return;
   }
   const otpResult = generateOtpResult.value!;
@@ -560,7 +565,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
   // Check if there's an existing OTP for password reset and update it, otherwise create a new one
   const existingOtpResult = await otpRepository.findOtpByEmail(email);
   if (existingOtpResult.err) {
-    res.status(500).json(createErrorResponse(existingOtpResult.err.message || 'An error occurred while retrieving OTP.', existingOtpResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(existingOtpResult.err.message || 'An error occurred while retrieving OTP.', existingOtpResult.err));
     return;
   }
 
@@ -575,16 +580,18 @@ export const forgotPassword = async (req: Request, res: Response) => {
     : await otpRepository.saveOtp(otpRecord);
 
   if (saveResult.err) {
-    res.status(500).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(saveResult.err.message || 'An error occurred while saving OTP.', saveResult.err));
     return;
   }
 
-  // Send password reset email here (Email service integration needed)
+  emailService.sendPasswordResetEmail(user.email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+    if (sendResult.err) console.log(sendResult.err.message);
+  });
 
-  res.status(200).json(createSuccessResponse({
+  res.status(httpStatus.ok).json(createSuccessResponse({
     email: user.email,
-    otp: otpResult.otp,
-    expiresAt: otpResult.expiresAt
+    expiresAt: otpResult.expiresAt,
+    ...otpDebugField(otpResult.otp)
   }, 'Password reset OTP sent successfully.'));
 }
 
@@ -602,7 +609,7 @@ export const resetPassword = async (req: Request, res: Response) => {
   }));
 
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -610,25 +617,25 @@ export const resetPassword = async (req: Request, res: Response) => {
 
   const otpRecordResult = await otpRepository.findOtpByEmail(email);
   if (otpRecordResult.err) {
-    res.status(500).json(createErrorResponse(otpRecordResult.err.message || 'An error occurred while retrieving OTP.', otpRecordResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(otpRecordResult.err.message || 'An error occurred while retrieving OTP.', otpRecordResult.err));
     return;
   }
 
   const otpRecord = otpRecordResult.value;
   if (!otpRecord || otpRecord.otp !== otp) {
-    res.status(400).json(createErrorResponse('Invalid OTP.'));
+    res.status(httpStatus.badRequest).json(createErrorResponse('Invalid OTP.'));
     return;
   }
 
   if (otpRecord.expiresAt < new Date()) {
-    res.status(400).json(createErrorResponse('OTP has expired.'));
+    res.status(httpStatus.badRequest).json(createErrorResponse('OTP has expired.'));
     return;
   }
 
   // Update user password
   const userResult = await usersRepository.findUserByEmail(email);
   if (userResult.err || !userResult.value) {
-    res.status(500).json(createErrorResponse('An error occurred while resetting password.', userResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse('An error occurred while resetting password.', userResult.err));
     return;
   }
 
@@ -636,14 +643,14 @@ export const resetPassword = async (req: Request, res: Response) => {
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   const updateUserResult = await usersRepository.updateUser(email, { password: hashedPassword });
   if (updateUserResult.err) {
-    res.status(500).json(createErrorResponse(updateUserResult.err.message || 'An error occurred while updating password.', updateUserResult.err));
+    res.status(httpStatus.serverError).json(createErrorResponse(updateUserResult.err.message || 'An error occurred while updating password.', updateUserResult.err));
     return;
   }
 
   // Delete OTP after successful password reset
   await otpRepository.deleteOtp(email);
 
-  res.status(200).json(createSuccessResponse({
+  res.status(httpStatus.ok).json(createSuccessResponse({
     email: user.email,
   }, 'Password reset successfully.'));
 }

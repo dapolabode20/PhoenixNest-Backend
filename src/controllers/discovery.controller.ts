@@ -6,6 +6,7 @@ import { usersRepository } from '../repositories/users.repository';
 import { ValidationHelper } from '../helpers/validation.helper';
 import { rankStartupsForInvestor, computeMatchScore } from '../services/matchScore.service';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
+import { httpStatus } from '../helpers/httpStatus.utils';
 
 type DiscoveryFeedQuery = {
   minScore: number;
@@ -42,38 +43,38 @@ export const getDiscoveryFeed = async (req: Request, res: Response) => {
   const { userId } = req.auth;
 
   if (!userId) {
-    res.status(401).json(createErrorResponse('Unauthorised.'));
+    res.status(httpStatus.unauthorized).json(createErrorResponse('Unauthorised.'));
     return;
   }
 
   // Verify the caller is an investor
   const userResult = await usersRepository.findById(userId);
   if (userResult.err || !userResult.value) {
-    res.status(500).json(createErrorResponse('Failed to retrieve user.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve user.'));
     return;
   }
 
   if (userResult.value.profile !== 'investor') {
-    res.status(403).json(createErrorResponse('Only investors can access the discovery feed.'));
+    res.status(httpStatus.forbidden).json(createErrorResponse('Only investors can access the discovery feed.'));
     return;
   }
 
   // Fetch the investor's own profile (contains preferences)
   const investorResult = await investorProfileRepository.findByUserId(userId);
   if (investorResult.err) {
-    res.status(500).json(createErrorResponse('Failed to retrieve investor profile.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve investor profile.'));
     return;
   }
 
   if (!investorResult.value) {
-    res.status(404).json(createErrorResponse('Investor profile not found. Please complete your profile first.'));
+    res.status(httpStatus.notFound).json(createErrorResponse('Investor profile not found. Please complete your profile first.'));
     return;
   }
 
   // Fetch all startup profiles
   const startupsResult = await startUpProfileRepository.findAll();
   if (startupsResult.err) {
-    res.status(500).json(createErrorResponse('Failed to retrieve startups.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve startups.'));
     return;
   }
 
@@ -82,7 +83,7 @@ export const getDiscoveryFeed = async (req: Request, res: Response) => {
   const queryValidation = ValidationHelper.validateObject<DiscoveryFeedQuery>(req.query, discoveryFeedQuerySchema);
   if (queryValidation.err || !queryValidation.value) {
     const validationError = queryValidation.err ?? new Error('Invalid query parameters.');
-    res.status(400).json(createErrorResponse(validationError.message, validationError));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validationError.message, validationError));
     return;
   }
 
@@ -116,7 +117,7 @@ export const getDiscoveryFeed = async (req: Request, res: Response) => {
     };
   });
 
-  res.status(200).json(createSuccessResponse(
+  res.status(httpStatus.ok).json(createSuccessResponse(
     {
       feed,
       pagination: { page, limit, totalCount, totalPages },
@@ -135,7 +136,7 @@ export const getStartupMatchScore = async (req: Request, res: Response) => {
     Joi.object({ id: Joi.string().required() })
   );
   if (validation.err) {
-    res.status(400).json(createErrorResponse(validation.err.message, validation.err));
+    res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
     return;
   }
 
@@ -143,48 +144,56 @@ export const getStartupMatchScore = async (req: Request, res: Response) => {
   const { userId } = req.auth;
 
   if (!userId) {
-    res.status(401).json(createErrorResponse('Unauthorised.'));
+    res.status(httpStatus.unauthorized).json(createErrorResponse('Unauthorised.'));
     return;
   }
 
   const userResult = await usersRepository.findById(userId);
   if (userResult.err || !userResult.value) {
-    res.status(500).json(createErrorResponse('Failed to retrieve user.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve user.'));
     return;
   }
 
   if (userResult.value.profile !== 'investor') {
-    res.status(403).json(createErrorResponse('Only investors can view match scores.'));
+    res.status(httpStatus.forbidden).json(createErrorResponse('Only investors can view match scores.'));
     return;
   }
 
   const investorResult = await investorProfileRepository.findByUserId(userId);
   if (investorResult.err || !investorResult.value) {
-    res.status(404).json(createErrorResponse('Investor profile not found.'));
+    res.status(httpStatus.notFound).json(createErrorResponse('Investor profile not found.'));
     return;
   }
 
   const startupResult = await startUpProfileRepository.findById(startupId);
   if (startupResult.err) {
-    res.status(500).json(createErrorResponse('Failed to retrieve startup profile.'));
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve startup profile.'));
     return;
   }
 
   if (!startupResult.value) {
-    res.status(404).json(createErrorResponse('Startup not found.'));
+    res.status(httpStatus.notFound).json(createErrorResponse('Startup not found.'));
     return;
   }
 
   const matchResult = computeMatchScore(investorResult.value, startupResult.value);
 
-  res.status(200).json(
+  res.status(httpStatus.ok).json(
     createSuccessResponse(
       {
         startupId,
         companyName: startupResult.value.companyName,
+        logoUrl: startupResult.value.logoUrl ?? null,
         marketSize: startupResult.value.marketSize ?? null,
         totalAddressableMarket: startupResult.value.totalAddressableMarket ?? null,
         currency: startupResult.value.currency ?? null,
+        biography: startupResult.value.biography ?? null,
+        visionAndMission: startupResult.value.visionAndMission ?? null,
+        pitchVideoUrl: startupResult.value.pitchVideoUrl ?? null,
+        proof: startupResult.value.proof ?? null,
+        coreLeadership: startupResult.value.coreLeadership ?? [],
+        contactInformation: startupResult.value.contactInformation ?? null,
+        picture: startupResult.value.picture ?? [],
         matchScore: matchResult.score,
         tier: matchResult.tier,
         breakdown: {

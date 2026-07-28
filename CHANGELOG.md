@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.5] - 2026-07-24
+---
+### Fixed
+- Fixed forgot-password (and login/register) reporting "user not found" for emails saved with different casing than stored, by normalizing email lookups in `users.repository.ts`.
+- Fixed `Result.value(null)` throwing instead of representing a valid "not found" result, which was masking real 404s as 500s across every repository.
+
+------
+## [1.1.4] - 2026-07-18
+---
+### Added
+- Added `POST /api/uploads` endpoint — uploads a single image/PDF (≤5MB) and returns its hosted URL, for use ahead of registration and profile update calls.
+- Added `profile` (user role) field to the login success response.
+- Added `logoUrl` to startup profile, `avatarUrl` to investor profile, and `imageUrl` to each `coreLeadership` team member.
+- Added expanded response fields (`logoUrl`, `pitchVideoUrl`, `proof`, `coreLeadership`, `biography`, `visionAndMission`, `contactInformation`, `picture`) to the startup match-score / feed-details endpoint.
+- Added `src/helpers/httpStatus.utils.ts` with named HTTP status constants.
+- Added `src/services/email.service.ts` wrapping Nodemailer over Brevo SMTP (`sendOtpEmail`, `sendPasswordResetEmail`), and wired real email delivery into registration, login, resend-otp, and forgot-password flows.
+- Added `engines` field to `package.json` for Render deployment.
+
+### Changed
+- Changed registration (`/auth/register/business-owner`, `/auth/register/investor`) and startup profile update (`/profile/startup`) from `multipart/form-data` to JSON bodies — file uploads now go through `POST /api/uploads` first and are passed as URLs (`identificationDocumentUrl`, `proof.*`, `logoUrl`, `coreLeadership[].imageUrl`).
+- Changed `coreLeadership` on profile update from a JSON-stringified form field to a plain JSON array.
+- Changed every `res.status(<number>)` call across controllers and middleware to use the new `httpStatus` constants.
+- Changed the OTP debug field on auth responses to be included only outside production.
+- Changed startup profile `proof` updates to merge with existing values instead of overwriting the whole sub-document.
+- Changed OTP/password-reset email copy from a raw ISO timestamp to a relative "expires in N minutes" message.
+
+### Fixed
+- Fixed `handleUploadError` middleware being fully implemented but never wired into any route — unsupported file types and oversized files now return a clean JSON error instead of a raw server error.
+- Fixed partial `proof` updates silently wiping previously-set document links.
+
+------
 ## [1.1.3] - 2026-06-19
 ---
 ### Added
