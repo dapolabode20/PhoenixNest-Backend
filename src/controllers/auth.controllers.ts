@@ -80,10 +80,9 @@ export const loginUser = async (req: Request, res: Response) => {
 
       code = otpResult.otp;
       expiresAt = otpResult.expiresAt;
-      const sendResult = await emailService.sendOtpEmail(email, code, expiresAt);
-      if (sendResult.err) {
-        console.log(sendResult.err.message);
-      }
+      emailService.sendOtpEmail(email, code, expiresAt).then((sendResult) => {
+        if (sendResult.err) console.log(sendResult.err.message);
+      });
     } else {
       code = otpRecord.otp;
       expiresAt = otpRecord.expiresAt;
@@ -188,10 +187,9 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
       return;
     }
 
-    const sendResult = await emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt);
-    if (sendResult.err) {
-      console.log(sendResult.err.message);
-    }
+    emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+      if (sendResult.err) console.log(sendResult.err.message);
+    });
 
     res.status(httpStatus.ok).json(
       createSuccessResponse(
@@ -255,10 +253,9 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     return;
   }
 
-  const sendResult = await emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt);
-  if (sendResult.err) {
-    console.log(sendResult.err.message);
-  }
+  emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+    if (sendResult.err) console.log(sendResult.err.message);
+  });
 
   res.status(httpStatus.created).json(
     createSuccessResponse(
@@ -333,10 +330,9 @@ export const registerInvestor = async (req: Request, res: Response) => {
       return;
     }
 
-    const sendResult = await emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt);
-    if (sendResult.err) {
-      console.log(sendResult.err.message);
-    }
+    emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+      if (sendResult.err) console.log(sendResult.err.message);
+    });
 
     res.status(httpStatus.ok).json(
       createSuccessResponse(
@@ -401,10 +397,9 @@ export const registerInvestor = async (req: Request, res: Response) => {
     return;
   }
 
-  const sendResult = await emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt);
-  if (sendResult.err) {
-    console.log(sendResult.err.message);
-  }
+  emailService.sendOtpEmail(email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+    if (sendResult.err) console.log(sendResult.err.message);
+  });
 
   res.status(httpStatus.created).json(
     createSuccessResponse(
@@ -466,10 +461,9 @@ export const resendOtp = async (req: Request, res: Response) => {
     return;
   }
 
-  const sendResult = await emailService.sendOtpEmail(user.email, otpResult.otp, otpResult.expiresAt);
-  if (sendResult.err) {
-    console.log(sendResult.err.message);
-  }
+  emailService.sendOtpEmail(user.email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+    if (sendResult.err) console.log(sendResult.err.message);
+  });
 
   res.status(httpStatus.ok).json(createSuccessResponse({
     email: user.email,
@@ -590,10 +584,9 @@ export const forgotPassword = async (req: Request, res: Response) => {
     return;
   }
 
-  const sendResult = await emailService.sendPasswordResetEmail(user.email, otpResult.otp, otpResult.expiresAt);
-  if (sendResult.err) {
-    console.log(sendResult.err.message);
-  }
+  emailService.sendPasswordResetEmail(user.email, otpResult.otp, otpResult.expiresAt).then((sendResult) => {
+    if (sendResult.err) console.log(sendResult.err.message);
+  });
 
   res.status(httpStatus.ok).json(createSuccessResponse({
     email: user.email,
