@@ -8,11 +8,13 @@ export interface AppConfig {
   cloudinaryCloudName: string;
   cloudinaryApiKey: string;
   cloudinaryApiSecret: string;
-  smtpHost: string;
-  smtpPort: number;
-  smtpUser: string;
-  smtpPass: string;
+  brevoApiKey: string;
   smtpFromAddress: string;
+  // SMTP fields kept for reference in case we revert to Nodemailer/SMTP
+  // smtpHost: string;
+  // smtpPort: number;
+  // smtpUser: string;
+  // smtpPass: string;
 }
 
 // Load environment variables
@@ -34,11 +36,12 @@ const config: AppConfig = {
   cloudinaryCloudName: getEnvVariable('CLOUDINARY_CLOUD_NAME'),
   cloudinaryApiKey: getEnvVariable('CLOUDINARY_API_KEY'),
   cloudinaryApiSecret: getEnvVariable('CLOUDINARY_API_SECRET'),
-  smtpHost: getEnvVariable('SMTP_HOST'),
-  smtpPort: Number(process.env.SMTP_PORT) || 587,
-  smtpUser: getEnvVariable('SMTP_USER'),
-  smtpPass: getEnvVariable('SMTP_PASS'),
+  brevoApiKey: getEnvVariable('BREVO_API_KEY'),
   smtpFromAddress: getEnvVariable('SMTP_FROM_ADDRESS')
+  // smtpHost: getEnvVariable('SMTP_HOST'),
+  // smtpPort: Number(process.env.SMTP_PORT) || 587,
+  // smtpUser: getEnvVariable('SMTP_USER'),
+  // smtpPass: getEnvVariable('SMTP_PASS'),
 };
 
 // const _loggable: any = { ...config };
