@@ -5,18 +5,13 @@ import { httpStatus } from '../helpers/httpStatus.utils';
 
 // ---------------------------------------------------------------------------
 // POST /api/uploads
-// Authenticated — uploads a single file to Cloudinary and returns its URL.
+// Unauthenticated — uploads a single file to Cloudinary and returns its URL.
 // Clients upload here first, then pass the returned url in the relevant
 // JSON body (registration, profile update, etc.) instead of attaching files.
+// Needs to stay open since new users have no access token yet when
+// uploading identification documents during registration.
 // ---------------------------------------------------------------------------
 export const uploadFile = async (req: Request, res: Response) => {
-  const { userId } = req.auth;
-
-  if (!userId) {
-    res.status(httpStatus.unauthorized).json(createErrorResponse('Unauthorised.'));
-    return;
-  }
-
   if (!req.file) {
     res.status(httpStatus.badRequest).json(createErrorResponse('File is required.'));
     return;
