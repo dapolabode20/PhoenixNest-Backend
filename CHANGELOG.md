@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.7] - 2026-11-12
+---
+### Added
+- Added messaging endpoints under `/api/conversations`: start a conversation, list conversations, list messages, send a message, mark as read, and report.
+- Added Socket.io live delivery for new messages (`message:new`) and read receipts (`conversation:read`).
+- Added a two-window demo page (`demo/chat.html`) for testing messaging.
+
+### Changed
+- Changed `authenticate` middleware to use a shared `verifyAccessToken` helper, which Socket.io also uses.
+- Changed `src/index.ts` to start the server with `http.createServer(app)` so Socket.io can attach to it.
+
+### Removed
+- Removed unused dependencies: `express-rate-limit`, `morgan`, `ts-node-dev`, `nodemailer` and `@types/nodemailer`.
+
+------
 ## [1.1.6] - 2026-07-28
 ---
 ### Changed

@@ -1,6 +1,8 @@
 import config from './config/config';
 import './config/db';
+import http from 'http';
 import app from './app/app';
+import { initSocket } from './sockets/io';
 
 async function main() {
   // Handle uncaught exceptions
@@ -11,7 +13,10 @@ async function main() {
 
   // Start the server
   const PORT = config.port || 3001;
-  app.listen(PORT, () => {
+  const server = http.createServer(app);
+  initSocket(server);
+
+  server.listen(PORT, () => {
     console.log(`Server running in ${config.environment} mode on port: ${PORT}`);
   });
 
