@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 ---
 ### Added
 - Added messaging endpoints under `/api/conversations`: start a conversation, list conversations, list messages, send a message, mark as read, and report.
+- Added inbox details to `GET /api/conversations`: other participant, their firm/company, last message preview and unread count, plus `page`, `limit` and `total`.
+- Added `before` and `hasMore` to `GET /api/conversations/:conversationId/messages` for loading older messages.
+- Added a shared `objectId` validation rule in `validation.helper.ts` for ids in requests.
 - Added Socket.io live delivery for new messages (`message:new`) and read receipts (`conversation:read`).
 - Added a two-window demo page (`demo/chat.html`) for testing messaging.
 

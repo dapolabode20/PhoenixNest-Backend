@@ -173,7 +173,7 @@
     // both triggered by "opening the chat". See the earlier discussion on
     // why GET should never have side effects.
     const [messagesRes] = await Promise.all([
-      fetch(`${backendUrl()}/api/conversations/${conversationId}/messages?limit=50&page=1`, {
+      fetch(`${backendUrl()}/api/conversations/${conversationId}/messages?limit=50`, {
         headers: { Authorization: `Bearer ${token}` }
       }),
       fetch(`${backendUrl()}/api/conversations/${conversationId}/read`, {
@@ -187,7 +187,7 @@
     // The API returns newest-first (good for "load older" pagination) —
     // reverse it here so the chat reads top-to-bottom, oldest first.
     document.getElementById('messages').innerHTML = '';
-    [...json.data].reverse().forEach(renderMessage);
+    [...json.data.messages].reverse().forEach(renderMessage);
   }
 
   function renderMessage(msg) {

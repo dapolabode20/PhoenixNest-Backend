@@ -4,7 +4,9 @@ import { Model, Document } from 'mongoose';
 
 interface IMessageRepository {
   createMessage(data: Partial<IMessage>): Promise<Result<IMessage>>;
-  findByConversation(conversationId: string, limit: number, page: number): Promise<Result<IMessage[]>>;
+  findByConversation(conversationId: string, limit: number, before?: Date): Promise<Result<IMessage[]>>;
+  findLatest(conversationId: string): Promise<Result<IMessage | null>>;
+  countUnread(conversationId: string, readerUserId: string): Promise<Result<number>>;
   markConversationRead(conversationId: string, readerUserId: string): Promise<Result<number>>;
 }
 
@@ -23,20 +25,43 @@ export class MessageRepository implements IMessageRepository {
     }
   }
 
-  // Newest first, page 1 = most recent page. The frontend reverses this
-  // for display (oldest-at-top, like every chat app), but newest-first is
-  // the natural order for "load more / older messages" pagination.
-  async findByConversation(conversationId: string, limit: number, page: number): Promise<Result<IMessage[]>> {
+  // Returns messages newest first, using cursor pagination: without `before`
+  // you get the most recent messages; to load older ones, pass the createdAt
+  // of the oldest message already loaded. (Page numbers would show duplicates
+  // when new messages arrive while the user is scrolling back through history.)
+  async findByConversation(conversationId: string, limit: number, before?: Date): Promise<Result<IMessage[]>> {
     try {
+      const filter = before ? { conversationId, createdAt: { $lt: before } } : { conversationId };
       const messages = await this.model
-        .find({ conversationId })
+        .find(filter)
         .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
         .limit(limit)
         .exec();
       return Result.value(messages);
     } catch (error) {
       return Result.error(new Error('Failed to find messages for conversation'));
+    }
+  }
+
+  async findLatest(conversationId: string): Promise<Result<IMessage | null>> {
+    try {
+      const message = await this.model.findOne({ conversationId }).sort({ createdAt: -1 }).exec();
+      return Result.value(message);
+    } catch (error) {
+      return Result.error(new Error('Failed to find latest message'));
+    }
+  }
+
+  // Same rule as markConversationRead below: messages the reader did NOT
+  // send and hasn't read yet.
+  async countUnread(conversationId: string, readerUserId: string): Promise<Result<number>> {
+    try {
+      const count = await this.model
+        .countDocuments({ conversationId, senderId: { $ne: readerUserId }, readAt: null })
+        .exec();
+      return Result.value(count);
+    } catch (error) {
+      return Result.error(new Error('Failed to count unread messages'));
     }
   }
 

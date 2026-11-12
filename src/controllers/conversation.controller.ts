@@ -1,9 +1,12 @@
 import { Request, Response } from 'express';
 import Joi from 'joi';
-import { ValidationHelper } from '../helpers/validation.helper';
+import { Types } from 'mongoose';
+import { ValidationHelper, objectId } from '../helpers/validation.helper';
 import { conversationRepository } from '../repositories/conversation.repository';
 import { messageRepository } from '../repositories/message.repository';
 import { usersRepository } from '../repositories/users.repository';
+import { startUpProfileRepository } from '../repositories/startUpProfile.repository';
+import { investorProfileRepository } from '../repositories/investorProfile.repository';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
 import { httpStatus } from '../helpers/httpStatus.utils';
 import { IConversation } from '../models/conversation.model';
@@ -18,6 +21,11 @@ type ListQuery = {
   page: number;
 };
 
+type MessagesQuery = {
+  limit: number;
+  before?: Date;
+};
+
 type ConversationParams = {
   conversationId: string;
 };
@@ -28,7 +36,7 @@ type SendMessageBody = {
 };
 
 const startConversationSchema = Joi.object<StartConversationBody>({
-  recipientId: Joi.string().required()
+  recipientId: objectId.required()
 });
 
 const listQuerySchema = Joi.object<ListQuery>({
@@ -36,8 +44,13 @@ const listQuerySchema = Joi.object<ListQuery>({
   page: Joi.number().integer().min(1).default(1)
 });
 
+const messagesQuerySchema = Joi.object<MessagesQuery>({
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  before: Joi.date().iso().optional()
+});
+
 const conversationParamsSchema = Joi.object<ConversationParams>({
-  conversationId: Joi.string().required()
+  conversationId: objectId.required()
 });
 
 const sendMessageSchema = Joi.object<SendMessageBody>({
@@ -70,6 +83,58 @@ async function loadConversationForParticipant(
   }
 
   return result.value;
+}
+
+// What `findForUser` populates each participant with.
+type PopulatedParticipant = {
+  _id: Types.ObjectId;
+  firstName: string;
+  lastName: string;
+  profile: 'business_owner' | 'investor';
+} | null; // null if that user's account has since been deleted
+
+// The other person's firm (investor) or company (startup), and their picture.
+// If the profile is missing or the lookup fails, these are just null — they
+// are display details, so they shouldn't fail the whole inbox.
+async function findOrganization(userId: string, profile: string) {
+  if (profile === 'investor') {
+    const result = await investorProfileRepository.findByUserId(userId);
+    return { organizationName: result.value?.firmName ?? null, imageUrl: result.value?.avatarUrl ?? null };
+  }
+  const result = await startUpProfileRepository.findByUserId(userId);
+  return { organizationName: result.value?.companyName ?? null, imageUrl: result.value?.logoUrl ?? null };
+}
+
+// Turns a conversation into what one inbox row needs: who it's with, a
+// preview of the latest message, and how many messages are unread.
+async function toInboxItem(conversation: IConversation, userId: string) {
+  const conversationId = String(conversation._id);
+  const participants = conversation.participants as unknown as PopulatedParticipant[];
+  const other = participants.find((p) => p && p._id.toString() !== userId);
+
+  const [organization, latestResult, unreadResult] = await Promise.all([
+    other
+      ? findOrganization(other._id.toString(), other.profile)
+      : Promise.resolve({ organizationName: null, imageUrl: null }),
+    messageRepository.findLatest(conversationId),
+    messageRepository.countUnread(conversationId, userId)
+  ]);
+  const latest = latestResult.value;
+
+  return {
+    _id: conversation._id,
+    counterparty: other
+      ? { _id: other._id, firstName: other.firstName, lastName: other.lastName, profile: other.profile, ...organization }
+      : null,
+    lastMessage: latest
+      ? { preview: latest.body.slice(0, 100), senderId: latest.senderId, createdAt: latest.createdAt }
+      : null,
+    unreadCount: unreadResult.value ?? 0,
+    messageCount: conversation.messageCount,
+    lastMessageAt: conversation.lastMessageAt ?? null,
+    reported: conversation.reported,
+    createdAt: conversation.createdAt
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -117,8 +182,10 @@ export const startConversation = async (req: Request, res: Response) => {
 
 // ---------------------------------------------------------------------------
 // GET /api/conversations
-// Authenticated. Lists the caller's conversations, most recently active first.
+// Authenticated. Lists the caller's conversations, most recently active first,
+// each with who it's with, a last-message preview and an unread count.
 // Query: limit (default 20), page (default 1)
+// Response data: { data, page, limit, total } (PRD §37 list format)
 // ---------------------------------------------------------------------------
 export const listConversations = async (req: Request, res: Response) => {
   const { userId } = req.auth;
@@ -134,19 +201,33 @@ export const listConversations = async (req: Request, res: Response) => {
   }
   const { limit, page } = validation.value;
 
-  const result = await conversationRepository.findForUser(userId, limit, page);
-  if (result.err) {
-    res.status(httpStatus.serverError).json(createErrorResponse(result.err.message));
+  const [result, countResult] = await Promise.all([
+    conversationRepository.findForUser(userId, limit, page),
+    conversationRepository.countForUser(userId)
+  ]);
+  if (result.err || !result.value || countResult.err || countResult.value === undefined) {
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve conversations.'));
     return;
   }
 
-  res.status(httpStatus.ok).json(createSuccessResponse(result.value));
+  const conversations = await Promise.all(
+    result.value.map((conversation) => toInboxItem(conversation, userId))
+  );
+
+  res.status(httpStatus.ok).json(createSuccessResponse({
+    data: conversations,
+    page,
+    limit,
+    total: countResult.value
+  }));
 };
 
 // ---------------------------------------------------------------------------
 // GET /api/conversations/:conversationId/messages
 // Authenticated, must be a participant. Returns messages newest-first.
-// Query: limit (default 20), page (default 1)
+// Query: limit (default 20), before (optional — createdAt of the oldest
+// message already loaded, to fetch the ones older than it)
+// Response data: { messages, hasMore }
 // ---------------------------------------------------------------------------
 export const listMessages = async (req: Request, res: Response) => {
   const { userId } = req.auth;
@@ -160,7 +241,7 @@ export const listMessages = async (req: Request, res: Response) => {
     res.status(httpStatus.badRequest).json(createErrorResponse('Invalid request.'));
     return;
   }
-  const queryValidation = ValidationHelper.validateObject(req.query, listQuerySchema);
+  const queryValidation = ValidationHelper.validateObject(req.query, messagesQuerySchema);
   if (queryValidation.err) {
     res.status(httpStatus.badRequest).json(createErrorResponse(queryValidation.err.message, queryValidation.err));
     return;
@@ -174,14 +255,19 @@ export const listMessages = async (req: Request, res: Response) => {
   const conversation = await loadConversationForParticipant(conversationId, userId, res);
   if (!conversation) return; // response already sent
 
-  const { limit, page } = queryValidation.value;
-  const result = await messageRepository.findByConversation(conversationId, limit, page);
-  if (result.err) {
-    res.status(httpStatus.serverError).json(createErrorResponse(result.err.message));
+  // Ask for one more than requested: if it comes back, there are older
+  // messages to load — no separate count query needed.
+  const { limit, before } = queryValidation.value;
+  const result = await messageRepository.findByConversation(conversationId, limit + 1, before);
+  if (result.err || !result.value) {
+    res.status(httpStatus.serverError).json(createErrorResponse('Failed to retrieve messages.'));
     return;
   }
 
-  res.status(httpStatus.ok).json(createSuccessResponse(result.value));
+  res.status(httpStatus.ok).json(createSuccessResponse({
+    messages: result.value.slice(0, limit),
+    hasMore: result.value.length > limit
+  }));
 };
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ interface IConversationRepository {
   findOrCreateBetween(userIdA: string, userIdB: string): Promise<Result<IConversation>>;
   findById(id: string): Promise<Result<IConversation | null>>;
   findForUser(userId: string, limit: number, page: number): Promise<Result<IConversation[]>>;
+  countForUser(userId: string): Promise<Result<number>>;
   recordNewMessage(conversationId: string, sentAt: Date): Promise<Result<IConversation | null>>;
   markReported(conversationId: string): Promise<Result<IConversation | null>>;
 }
@@ -45,6 +46,8 @@ export class ConversationRepository implements IConversationRepository {
   }
 
   // Most-recently-active conversations first, so the list reads like an inbox.
+  // Participants are populated with name and role so the inbox can show who
+  // each conversation is with; every other lookup uses plain ids.
   async findForUser(userId: string, limit: number, page: number): Promise<Result<IConversation[]>> {
     try {
       const conversations = await this.model
@@ -52,10 +55,20 @@ export class ConversationRepository implements IConversationRepository {
         .sort({ lastMessageAt: -1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
+        .populate('participants', 'firstName lastName profile')
         .exec();
       return Result.value(conversations);
     } catch (error) {
       return Result.error(new Error('Failed to find conversations for user'));
+    }
+  }
+
+  async countForUser(userId: string): Promise<Result<number>> {
+    try {
+      const count = await this.model.countDocuments({ participants: userId }).exec();
+      return Result.value(count);
+    } catch (error) {
+      return Result.error(new Error('Failed to count conversations for user'));
     }
   }
 
