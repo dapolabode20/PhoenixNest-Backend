@@ -20,6 +20,9 @@ All notable changes to this project will be documented in this file.
 ### Removed
 - Removed unused dependencies: `express-rate-limit`, `morgan`, `ts-node-dev`, `nodemailer` and `@types/nodemailer`.
 
+### Fixed
+- Fixed malformed startup ids on the match endpoint returning 500 instead of 400.
+
 ------
 ## [1.1.6] - 2026-07-28
 ---

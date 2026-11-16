@@ -5,5 +5,5 @@ export type DiscoveryFeedQuery = {
 };
 
 export type StartupMatchParams = {
-  startupId: string;
+  id: string;
 };

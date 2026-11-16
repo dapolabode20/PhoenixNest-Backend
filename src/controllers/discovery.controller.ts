@@ -3,7 +3,7 @@ import Joi from 'joi';
 import { investorProfileRepository } from '../repositories/investorProfile.repository';
 import { startUpProfileRepository } from '../repositories/startUpProfile.repository';
 import { usersRepository } from '../repositories/users.repository';
-import { ValidationHelper } from '../helpers/validation.helper';
+import { ValidationHelper, objectId } from '../helpers/validation.helper';
 import { rankStartupsForInvestor, computeMatchScore } from '../services/matchScore.service';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
 import { httpStatus } from '../helpers/httpStatus.utils';
@@ -16,7 +16,7 @@ const discoveryFeedQuerySchema = Joi.object<DiscoveryFeedQuery>({
 });
 
 const startupMatchParamsSchema = Joi.object<StartupMatchParams>({
-  startupId: Joi.string().required(),
+  id: objectId.required(),
 });
 
 // ---------------------------------------------------------------------------
@@ -118,16 +118,18 @@ export const getDiscoveryFeed = async (req: Request, res: Response) => {
 };
 
 // ---------------------------------------------------------------------------
-// GET /discovery/startups/:startupId/match
+// GET /discovery/startups/match/:id
 // Authenticated investor — returns the detailed match score for a specific
 // startup (used on the "View Pitch" / investor-view-pitch page).
 // ---------------------------------------------------------------------------
 export const getStartupMatchScore = async (req: Request, res: Response) => {
-  const validation = ValidationHelper.validateObject(req.params,
-    Joi.object({ id: Joi.string().required() })
-  );
+  const validation = ValidationHelper.validateObject<StartupMatchParams>(req.params, startupMatchParamsSchema);
   if (validation.err) {
     res.status(httpStatus.badRequest).json(createErrorResponse(validation.err.message, validation.err));
+    return;
+  }
+  if (!validation.value) {
+    res.status(httpStatus.badRequest).json(createErrorResponse('Invalid request parameters.'));
     return;
   }
 
