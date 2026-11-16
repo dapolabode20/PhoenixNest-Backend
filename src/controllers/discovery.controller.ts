@@ -7,16 +7,7 @@ import { ValidationHelper } from '../helpers/validation.helper';
 import { rankStartupsForInvestor, computeMatchScore } from '../services/matchScore.service';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
 import { httpStatus } from '../helpers/httpStatus.utils';
-
-type DiscoveryFeedQuery = {
-  minScore: number;
-  limit: number;
-  page: number;
-};
-
-type StartupMatchParams = {
-  startupId: string;
-};
+import { DiscoveryFeedQuery, StartupMatchParams } from '../dtos/discovery.dto';
 
 const discoveryFeedQuerySchema = Joi.object<DiscoveryFeedQuery>({
   minScore: Joi.number().min(0).max(100).default(0),

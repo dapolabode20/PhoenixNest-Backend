@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Changed `authenticate` middleware to use a shared `verifyAccessToken` helper, which Socket.io also uses.
 - Changed `src/index.ts` to start the server with `http.createServer(app)` so Socket.io can attach to it.
+- Changed request types for auth, profile, discovery and messaging to live in `src/dtos/`, one file per feature. Validation is unchanged.
 
 ### Removed
 - Removed unused dependencies: `express-rate-limit`, `morgan`, `ts-node-dev`, `nodemailer` and `@types/nodemailer`.

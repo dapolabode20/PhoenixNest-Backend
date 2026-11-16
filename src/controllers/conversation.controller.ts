@@ -11,29 +11,13 @@ import { createErrorResponse, createSuccessResponse } from '../helpers/response.
 import { httpStatus } from '../helpers/httpStatus.utils';
 import { IConversation } from '../models/conversation.model';
 import { getIO } from '../sockets/io';
-
-type StartConversationBody = {
-  recipientId: string;
-};
-
-type ListQuery = {
-  limit: number;
-  page: number;
-};
-
-type MessagesQuery = {
-  limit: number;
-  before?: Date;
-};
-
-type ConversationParams = {
-  conversationId: string;
-};
-
-type SendMessageBody = {
-  body: string;
-  attachments?: string[];
-};
+import {
+  StartConversationBody,
+  ListQuery,
+  MessagesQuery,
+  ConversationParams,
+  SendMessageBody
+} from '../dtos/conversation.dto';
 
 const startConversationSchema = Joi.object<StartConversationBody>({
   recipientId: objectId.required()
