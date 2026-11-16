@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.7] - 2026-11-12
+---
+### Added
+- Added messaging endpoints under `/api/conversations`: start a conversation, list conversations, list messages, send a message, mark as read, and report.
+- Added inbox details to `GET /api/conversations`: other participant, their firm/company, last message preview and unread count, plus `page`, `limit` and `total`.
+- Added `before` and `hasMore` to `GET /api/conversations/:conversationId/messages` for loading older messages.
+- Added a shared `objectId` validation rule in `validation.helper.ts` for ids in requests.
+- Added Socket.io live delivery for new messages (`message:new`) and read receipts (`conversation:read`).
+- Added a two-window demo page (`demo/chat.html`) for testing messaging.
+
+### Changed
+- Changed `authenticate` middleware to use a shared `verifyAccessToken` helper, which Socket.io also uses.
+- Changed `src/index.ts` to start the server with `http.createServer(app)` so Socket.io can attach to it.
+- Changed request types for auth, profile, discovery and messaging to live in `src/dtos/`, one file per feature. Validation is unchanged.
+
+### Removed
+- Removed unused dependencies: `express-rate-limit`, `morgan`, `ts-node-dev`, `nodemailer` and `@types/nodemailer`.
+
+### Fixed
+- Fixed malformed startup ids on the match endpoint returning 500 instead of 400.
+
+------
 ## [1.1.6] - 2026-07-28
 ---
 ### Changed

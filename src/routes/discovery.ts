@@ -46,7 +46,7 @@ const router = Router();
 router.get('/feed', authenticate, getDiscoveryFeed);
 
 /**
- * GET /api/discovery/startups/:startupId/match
+ * GET /api/discovery/startups/match/:id
  *
  * Returns the detailed match score breakdown between the authenticated
  * investor and a specific startup. Used on the "View Pitch" page.
