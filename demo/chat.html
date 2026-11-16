@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Phoenix Nest — Messaging Demo</title>
+<!--
+  No build step, no npm install for this file — it's a plain static page.
+  The one thing it needs from "outside" is the socket.io browser client,
+  loaded here from a CDN (this is the browser equivalent of the
+  `socket.io-client` npm package the real frontend would install).
+-->
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<style>
+  body { font-family: -apple-system, Arial, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; }
+  h1 { font-size: 18px; }
+  fieldset { margin-bottom: 16px; border-radius: 8px; }
+  label { display: block; margin: 8px 0 2px; font-size: 13px; color: #444; }
+  input { width: 100%; padding: 6px 8px; box-sizing: border-box; font-size: 14px; }
+  button { margin-top: 10px; padding: 6px 14px; cursor: pointer; }
+  #status { font-size: 12px; color: #666; margin: 8px 0; white-space: pre-wrap; }
+  #messages { border: 1px solid #ccc; border-radius: 8px; padding: 8px; height: 280px; overflow-y: auto; margin-bottom: 8px; background: #fafafa; }
+  .msg { margin: 4px 0; padding: 6px 10px; border-radius: 10px; max-width: 75%; }
+  .mine { background: #d8f0d8; margin-left: auto; text-align: right; }
+  .theirs { background: #eee; }
+  .meta { font-size: 11px; color: #777; }
+  #readBanner { font-size: 12px; color: #2a7; min-height: 16px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<h1>Phoenix Nest — Messaging Demo</h1>
+<p>Open this same file in a second window, log in as the other test user, and chat between the two.</p>
+
+<fieldset>
+  <legend>Backend</legend>
+  <label>Backend URL</label>
+  <input id="backendUrl" value="http://localhost:3000" />
+</fieldset>
+
+<!-- LOGIN VIEW -->
+<fieldset id="loginBox">
+  <legend>Log in</legend>
+  <label>Email</label>
+  <input id="loginEmail" placeholder="test.founder.msgdemo@example.com" />
+  <label>Password</label>
+  <input id="loginPassword" type="password" placeholder="TestPass123!" />
+  <button onclick="login()">Log in</button>
+</fieldset>
+
+<!-- CHAT VIEW (shown after login) -->
+<fieldset id="chatBox" class="hidden">
+  <legend>Signed in</legend>
+  <div>You are: <b id="whoami"></b> (<span id="myUserId"></span>) <button onclick="logout()" style="float:right">Log out</button></div>
+
+  <label>Start/open a conversation with (their User ID)</label>
+  <input id="recipientId" placeholder="paste the other test user's User ID here" />
+  <button onclick="openConversation()">Open conversation</button>
+
+  <div id="conversationArea" class="hidden">
+    <p>Conversation: <code id="conversationId"></code></p>
+    <div id="messages"></div>
+    <div id="readBanner"></div>
+    <input id="composeBody" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendMessage()" />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+</fieldset>
+
+<div id="status">Not connected.</div>
+
+<script>
+  // ---- Simple per-window state (sessionStorage, see explanation above) ----
+  let token = sessionStorage.getItem('msgdemo_token');
+  let myUserId = sessionStorage.getItem('msgdemo_userId');
+  let myEmail = sessionStorage.getItem('msgdemo_email');
+  let conversationId = null;
+  let socket = null;
+
+  function backendUrl() { return document.getElementById('backendUrl').value.replace(/\/$/, ''); }
+  function log(line) {
+    const el = document.getElementById('status');
+    el.textContent = `[${new Date().toLocaleTimeString()}] ${line}\n` + el.textContent;
+  }
+
+  async function login() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const res = await fetch(`${backendUrl()}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const json = await res.json();
+    if (!res.ok) { log(`Login failed: ${json.message}`); return; }
+
+    token = json.data.token;
+    myUserId = json.data.userId;
+    myEmail = json.data.email;
+    sessionStorage.setItem('msgdemo_token', token);
+    sessionStorage.setItem('msgdemo_userId', myUserId);
+    sessionStorage.setItem('msgdemo_email', myEmail);
+    log(`Logged in as ${myEmail}`);
+    showChatView();
+    connectSocket();
+  }
+
+  function logout() {
+    sessionStorage.clear();
+    if (socket) socket.close();
+    location.reload();
+  }
+
+  function showChatView() {
+    document.getElementById('loginBox').classList.add('hidden');
+    document.getElementById('chatBox').classList.remove('hidden');
+    document.getElementById('whoami').textContent = myEmail;
+    document.getElementById('myUserId').textContent = myUserId;
+  }
+
+  // ---- Socket.io connection — same contract documented in src/sockets/io.ts ----
+  function connectSocket() {
+    socket = io(backendUrl(), { auth: { token } });
+
+    socket.on('connect', () => {
+      log('Socket connected.');
+      // Re-join per the reconnect contract: do this on every 'connect',
+      // not just the first time, so a dropped connection recovers cleanly.
+      if (conversationId) socket.emit('conversation:join', conversationId);
+    });
+
+    socket.on('connect_error', (err) => log(`Socket connect_error: ${err.message}`));
+    socket.on('disconnect', (reason) => log(`Socket disconnected: ${reason}`));
+
+    socket.on('error', (payload) => log(`Socket error: ${JSON.stringify(payload)}`));
+
+    socket.on('message:new', (msg) => {
+      if (msg.conversationId !== conversationId) return; // not the open thread
+      renderMessage(msg);
+    });
+
+    socket.on('conversation:read', (payload) => {
+      if (payload.conversationId !== conversationId) return;
+      document.getElementById('readBanner').textContent =
+        `Seen by the other person at ${new Date(payload.readAt).toLocaleTimeString()}`;
+    });
+  }
+
+  // ---- Conversations & messages (plain REST) ----
+  async function openConversation() {
+    const recipientId = document.getElementById('recipientId').value.trim();
+    const res = await fetch(`${backendUrl()}/api/conversations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ recipientId })
+    });
+    const json = await res.json();
+    if (!res.ok) { log(`Could not open conversation: ${json.message}`); return; }
+
+    conversationId = json.data._id;
+    document.getElementById('conversationId').textContent = conversationId;
+    document.getElementById('conversationArea').classList.remove('hidden');
+    document.getElementById('messages').innerHTML = '';
+
+    socket.emit('conversation:join', conversationId);
+    log(`Joined conversation room ${conversationId}`);
+
+    await loadMessages();
+  }
+
+  async function loadMessages() {
+    // These two calls are independent of each other on purpose — fetching
+    // messages is read-only, marking them read is a separate explicit action,
+    // both triggered by "opening the chat". See the earlier discussion on
+    // why GET should never have side effects.
+    const [messagesRes] = await Promise.all([
+      fetch(`${backendUrl()}/api/conversations/${conversationId}/messages?limit=50`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+      fetch(`${backendUrl()}/api/conversations/${conversationId}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+    ]);
+    const json = await messagesRes.json();
+    if (!messagesRes.ok) { log(`Could not load messages: ${json.message}`); return; }
+
+    // The API returns newest-first (good for "load older" pagination) —
+    // reverse it here so the chat reads top-to-bottom, oldest first.
+    document.getElementById('messages').innerHTML = '';
+    [...json.data.messages].reverse().forEach(renderMessage);
+  }
+
+  function renderMessage(msg) {
+    const div = document.createElement('div');
+    const mine = msg.senderId === myUserId;
+    div.className = `msg ${mine ? 'mine' : 'theirs'}`;
+    div.innerHTML = `${escapeHtml(msg.body)}<div class="meta">${new Date(msg.createdAt).toLocaleTimeString()}</div>`;
+    const box = document.getElementById('messages');
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function sendMessage() {
+    const body = document.getElementById('composeBody').value.trim();
+    if (!body || !conversationId) return;
+    document.getElementById('composeBody').value = '';
+
+    const res = await fetch(`${backendUrl()}/api/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ body })
+    });
+    const json = await res.json();
+    if (!res.ok) log(`Send failed: ${json.message}`);
+    // Deliberately not rendering the message here — it arrives via the
+    // 'message:new' socket event instead, same as it would for the other
+    // person. That's the live-delivery path actually being exercised.
+  }
+
+  // ---- If this window already had a session (e.g. page reload), resume it ----
+  if (token && myUserId) {
+    showChatView();
+    connectSocket();
+  }
+</script>
+
+</body>
+</html>

@@ -13,6 +13,14 @@ import { emailService } from '../services/email.service';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
 import { httpStatus } from '../helpers/httpStatus.utils';
 import config from '../config/config';
+import {
+  LoginBody,
+  RegisterBusinessOwnerBody,
+  RegisterInvestorBody,
+  EmailBody,
+  VerifyOtpBody,
+  ResetPasswordBody
+} from '../dtos/auth.dto';
 
 // TODO: remove this once the frontend fully relies on real OTP email delivery
 // and no longer needs the code echoed back in the response for testing.
@@ -32,7 +40,7 @@ export const loginUser = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email, password } = req.body;
+  const { email, password }: LoginBody = req.body;
 
   const userResult = await usersRepository.findUserByEmail(email);
   if (userResult.err) {
@@ -160,7 +168,7 @@ export const registerBusinessOwner = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email, password } = validation.value;
+  const { email, password }: RegisterBusinessOwnerBody = validation.value;
 
   const existingUserResult = await usersRepository.findUserByEmail(email);
   if (existingUserResult.err) {
@@ -303,7 +311,7 @@ export const registerInvestor = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email, password } = validation.value;
+  const { email, password }: RegisterInvestorBody = validation.value;
 
   const existingUserResult = await usersRepository.findUserByEmail(email);
   if (existingUserResult.err) {
@@ -422,7 +430,7 @@ export const resendOtp = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email } = req.body;
+  const { email }: EmailBody = req.body;
 
   // Check if user exists and is not verified
   const userResult = await usersRepository.findUserByEmail(email);
@@ -483,7 +491,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email, otp } = req.body;
+  const { email, otp }: VerifyOtpBody = req.body;
 
   const otpRecordResult = await otpRepository.findOtpByEmail(email);
   if (otpRecordResult.err) {
@@ -538,7 +546,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email } = req.body;
+  const { email }: EmailBody = req.body;
 
   // Check if user exists
   const userResult = await usersRepository.findUserByEmail(email);
@@ -613,7 +621,7 @@ export const resetPassword = async (req: Request, res: Response) => {
     return;
   }
 
-  const { email, otp, newPassword } = req.body;
+  const { email, otp, newPassword }: ResetPasswordBody = req.body;
 
   const otpRecordResult = await otpRepository.findOtpByEmail(email);
   if (otpRecordResult.err) {

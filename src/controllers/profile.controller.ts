@@ -6,6 +6,7 @@ import { investorProfileRepository } from '../repositories/investorProfile.repos
 import { usersRepository } from '../repositories/users.repository';
 import { createErrorResponse, createSuccessResponse } from '../helpers/response.utils';
 import { httpStatus } from '../helpers/httpStatus.utils';
+import { UpdateStartupProfileBody, UpdateInvestorProfileBody } from '../dtos/profile.dto';
 
 // ---------------------------------------------------------------------------
 // PATCH /api/profile/startup
@@ -107,7 +108,7 @@ export const updateStartupProfile = async (req: Request, res: Response) => {
     pitchDeckUrl,
     businessPlanUrl,
     financialModelUrl
-  } = validation.value;
+  }: UpdateStartupProfileBody = validation.value;
 
   // Build update payload — only include fields that were actually sent
   const updateData: Record<string, any> = {};
@@ -225,7 +226,7 @@ export const updateInvestorProfile = async (req: Request, res: Response) => {
     return;
   }
 
-  const { lookingOutFor, stagePreference, investorType, yearsOfInvestmentExperience, communicationPreference, avatarUrl } = validation.value;
+  const { lookingOutFor, stagePreference, investorType, yearsOfInvestmentExperience, communicationPreference, avatarUrl }: UpdateInvestorProfileBody = validation.value;
 
   const updateData: Record<string, any> = {};
 
